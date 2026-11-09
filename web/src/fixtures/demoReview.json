@@ -151,6 +151,32 @@
         "pending": 2,
         "approved": 0
       }
+    },
+    {
+      "id": 5,
+      "kind": "youtube",
+      "ref": "youtube:DEMOcoffee1",
+      "title": "Demo video: Small habits around the morning coffee",
+      "url": "https://www.youtube.com/watch?v=DEMOcoffee1",
+      "mode": "extract",
+      "reviewed_at": "2026-11-08T12:00:00Z",
+      "tip_counts": {
+        "pending": 0,
+        "approved": 12
+      }
+    },
+    {
+      "id": 6,
+      "kind": "text",
+      "ref": "text:sha256:b9733b9b707a83503ff6e29b26363dd21fd35c8f2efa77ac3034fae50cf04788",
+      "title": "Demo notes: a full page of small daily habits",
+      "url": null,
+      "mode": "extract",
+      "reviewed_at": "2026-11-08T12:00:00Z",
+      "tip_counts": {
+        "pending": 0,
+        "approved": 49
+      }
     }
   ],
   "lists": [
@@ -221,8 +247,28 @@
       "title": "Coffee Machine — Adults",
       "cue": "First coffee or hot drink of the day",
       "sort_order": 7,
-      "item_count": 1,
+      "item_count": 6,
       "over_capacity": false
+    },
+    {
+      "id": 8,
+      "place": "Capacity Fits",
+      "audience": "adults",
+      "title": "Capacity Fits — Adults",
+      "cue": "Print test: exactly one full A4 page of approved tips",
+      "sort_order": 8,
+      "item_count": 48,
+      "over_capacity": false
+    },
+    {
+      "id": 9,
+      "place": "Capacity Spills",
+      "audience": "adults",
+      "title": "Capacity Spills — Adults",
+      "cue": "Print test: one approved tip more than an A4 page holds",
+      "sort_order": 9,
+      "item_count": 49,
+      "over_capacity": true
     }
   ],
   "tips": [
@@ -452,6 +498,1081 @@
       "possible_duplicate_of": null,
       "possible_duplicate_of_tip": null,
       "note": "a monthly outing",
+      "list_ids": [],
+      "created_at": "2026-11-08T12:00:00Z",
+      "updated_at": "2026-11-08T12:00:00Z"
+    }
+  ],
+  "list_items": {
+    "1": [
+      {
+        "tip_id": 1,
+        "position": 1,
+        "name": "Brush Your Teeth",
+        "action": "Brush for two full minutes, morning and night",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "kids+"
+      },
+      {
+        "tip_id": 8,
+        "position": 2,
+        "name": "Phone Sleeps Outside",
+        "action": "Charge your phone outside the bedroom at night",
+        "status": "pending",
+        "bucket": 1,
+        "audience": "adults"
+      }
+    ],
+    "2": [
+      {
+        "tip_id": 6,
+        "position": 1,
+        "name": "Hourly Desk Stretch",
+        "action": "Stand and stretch at the top of every hour",
+        "status": "pending",
+        "bucket": 1,
+        "audience": "adults"
+      }
+    ],
+    "3": [
+      {
+        "tip_id": 1,
+        "position": 1,
+        "name": "Brush Your Teeth",
+        "action": "Brush for two full minutes, morning and night",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "kids+"
+      }
+    ],
+    "4": [],
+    "5": [
+      {
+        "tip_id": 2,
+        "position": 1,
+        "name": "Keys On The Hook",
+        "action": "Hang your keys on the hook as you walk in",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "kids+"
+      },
+      {
+        "tip_id": 5,
+        "position": 2,
+        "name": "Shoes By The Door",
+        "action": "Before bed, line up tomorrow's shoes by the door",
+        "status": "pending",
+        "bucket": 1,
+        "audience": "kids+"
+      },
+      {
+        "tip_id": 12,
+        "position": 3,
+        "name": "Water Bottle In The Bag",
+        "action": "Pack a filled water bottle in the school bag",
+        "status": "pending",
+        "bucket": 1,
+        "audience": "kids+"
+      }
+    ],
+    "6": [
+      {
+        "tip_id": 2,
+        "position": 1,
+        "name": "Keys On The Hook",
+        "action": "Hang your keys on the hook as you walk in",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "kids+"
+      },
+      {
+        "tip_id": 5,
+        "position": 2,
+        "name": "Shoes By The Door",
+        "action": "Before bed, line up tomorrow's shoes by the door",
+        "status": "pending",
+        "bucket": 1,
+        "audience": "kids+"
+      }
+    ],
+    "7": [
+      {
+        "tip_id": 3,
+        "position": 1,
+        "name": "Stretch While The Kettle Boils",
+        "action": "Stretch your arms and back as the kettle heats",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 14,
+        "position": 2,
+        "name": "Glass Of Water First",
+        "action": "Drink a glass of water while the coffee brews",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 15,
+        "position": 3,
+        "name": "Pick Today's Top Three",
+        "action": "Write the day's three most important tasks on a note",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 16,
+        "position": 4,
+        "name": "Calf Raises While It Pours",
+        "action": "Rise onto your toes ten times as the coffee pours",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 17,
+        "position": 5,
+        "name": "Empty The Drip Tray",
+        "action": "Empty and rinse the drip tray after your first cup",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 18,
+        "position": 6,
+        "name": "Open The Kitchen Blinds",
+        "action": "Open the blinds while the machine warms up",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      }
+    ],
+    "8": [
+      {
+        "tip_id": 26,
+        "position": 1,
+        "name": "Refill The Water Jug",
+        "action": "Refill the water jug at the sink and put it in the fridge",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 27,
+        "position": 2,
+        "name": "Clear The Breakfast Sink",
+        "action": "Wash up the breakfast dishes and leave the sink empty",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 28,
+        "position": 3,
+        "name": "Open The Curtains Wide",
+        "action": "Open the curtains as soon as you come down each morning",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 29,
+        "position": 4,
+        "name": "Wipe The Kitchen Counter",
+        "action": "Wipe the counter with a damp cloth after every dinner",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 30,
+        "position": 5,
+        "name": "Read Tomorrow's Diary",
+        "action": "Look at tomorrow's plans and lay out the things you need",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 31,
+        "position": 6,
+        "name": "Water Your Herb Pots",
+        "action": "Feel the soil of the herb pots and water any that are dry",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 32,
+        "position": 7,
+        "name": "Empty The Lint Trap",
+        "action": "Pull the fluff out of the dryer lint trap after every load",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 33,
+        "position": 8,
+        "name": "Take Your Daily Vitamins",
+        "action": "Take your vitamins with a glass of water at breakfast",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 34,
+        "position": 9,
+        "name": "Sort The Morning Post",
+        "action": "Open your post at the door and recycle the junk mail now",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 35,
+        "position": 10,
+        "name": "Charge The Headphones",
+        "action": "Plug the headphones in to charge before you go to dinner",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 36,
+        "position": 11,
+        "name": "Plan Your Top Three Tasks",
+        "action": "List the three tasks that matter most today on paper",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 37,
+        "position": 12,
+        "name": "Stretch Your Calves",
+        "action": "Rise up on your toes ten times while the toast is browning",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 38,
+        "position": 13,
+        "name": "Hang Up Your Coat",
+        "action": "Hang your coat on its own hook, not over the back of a chair",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 39,
+        "position": 14,
+        "name": "Rinse The Coffee Pot",
+        "action": "Rinse the coffee pot and leave it upside down on the rack",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 40,
+        "position": 15,
+        "name": "Tidy The Shoe Rack",
+        "action": "Pair up the shoes on the rack and carry any strays upstairs",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 41,
+        "position": 16,
+        "name": "Turn On The Dishwasher",
+        "action": "Start the dishwasher before bed if it is over half full",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 42,
+        "position": 17,
+        "name": "Breathe Before Calls",
+        "action": "Take two slow breaths before you answer a work phone call",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 43,
+        "position": 18,
+        "name": "Check The Weather",
+        "action": "Check the weather before you choose a coat for the day ahead",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 44,
+        "position": 19,
+        "name": "Put Keys In The Bowl",
+        "action": "Drop your keys and wallet into the bowl by the front door",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 45,
+        "position": 20,
+        "name": "Clean Your Glasses",
+        "action": "Polish your glasses with the soft lens cloth before reading",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 46,
+        "position": 21,
+        "name": "Feed The Cat First",
+        "action": "Feed the cat and fill up her water bowl before you make tea",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 47,
+        "position": 22,
+        "name": "Back Up Your Photos",
+        "action": "Plug the phone in at night so all the day's photos back up",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 48,
+        "position": 23,
+        "name": "Wipe Down The Cool Hob",
+        "action": "Wipe the hob once it has cooled so spills never bake on",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 49,
+        "position": 24,
+        "name": "Close The Work Laptop",
+        "action": "Close the laptop lid at the end of work and tuck it away",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 50,
+        "position": 25,
+        "name": "Fold The Sofa Blanket",
+        "action": "Fold the sofa blanket over the arm when you go up to bed",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 51,
+        "position": 26,
+        "name": "Check The Back Door",
+        "action": "Make sure the back door is locked before the lights go out",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 52,
+        "position": 27,
+        "name": "Pack Tomorrow's Lunch",
+        "action": "Pack tomorrow's lunch in a box and keep it in the fridge",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 53,
+        "position": 28,
+        "name": "Move For Two Minutes",
+        "action": "Walk around the house for two minutes after every meeting",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 54,
+        "position": 29,
+        "name": "Floss After Brushing",
+        "action": "Floss between every tooth after you brush them each night",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 55,
+        "position": 30,
+        "name": "Write Three Thanks",
+        "action": "Write down three good things about the day before you sleep",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 56,
+        "position": 31,
+        "name": "Air Out The Bedroom",
+        "action": "Open the window wide for ten minutes when you make the bed",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 57,
+        "position": 32,
+        "name": "Set Out Your Clothes",
+        "action": "Lay out tomorrow's clothes on your chair before you sleep",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 58,
+        "position": 33,
+        "name": "Clear The Desk Top",
+        "action": "Put every pen and paper back in its place when work is over",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 59,
+        "position": 34,
+        "name": "Check The Fridge First",
+        "action": "Look in the fridge and eat the food that goes off first",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 60,
+        "position": 35,
+        "name": "Drink Before Coffee",
+        "action": "Drink one glass of water before you pour your first coffee",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 61,
+        "position": 36,
+        "name": "Unload The Warm Dryer",
+        "action": "Take the washing out of the dryer while it is still warm",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 62,
+        "position": 37,
+        "name": "Reply To Old Messages",
+        "action": "Answer every message that has waited for more than a day",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 63,
+        "position": 38,
+        "name": "Return The Mugs Today",
+        "action": "Take every mug back to the kitchen when you leave a room",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 64,
+        "position": 39,
+        "name": "Stand Up Straight",
+        "action": "Roll your shoulders back and stand tall as your kettle boils",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 65,
+        "position": 40,
+        "name": "Empty The Kitchen Bin",
+        "action": "Take the bin bag out to the wheelie bin when it fills up",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 66,
+        "position": 41,
+        "name": "Wash Your Hands Well",
+        "action": "Wash with soap for twenty seconds as soon as you get home",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 67,
+        "position": 42,
+        "name": "Rest Your Tired Eyes",
+        "action": "Focus on something far away for twenty seconds every hour",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 68,
+        "position": 43,
+        "name": "Prep The Coffee Machine",
+        "action": "Fill the machine with water and beans the night before",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 69,
+        "position": 44,
+        "name": "Recycle The Boxes",
+        "action": "Flatten the delivery boxes and put them in the recycling bin",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 70,
+        "position": 45,
+        "name": "Check Your Desk Posture",
+        "action": "Sit back with both your feet flat on the floor at work",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 71,
+        "position": 46,
+        "name": "Note The Shopping",
+        "action": "Add anything that has just run out to your shopping list now",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 72,
+        "position": 47,
+        "name": "Lock The Car Twice",
+        "action": "Press the lock button and wait for the beep as you walk off",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 73,
+        "position": 48,
+        "name": "Switch Off The Plugs",
+        "action": "Switch off the plugs you don't need on your way up to bed",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      }
+    ],
+    "9": [
+      {
+        "tip_id": 26,
+        "position": 1,
+        "name": "Refill The Water Jug",
+        "action": "Refill the water jug at the sink and put it in the fridge",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 27,
+        "position": 2,
+        "name": "Clear The Breakfast Sink",
+        "action": "Wash up the breakfast dishes and leave the sink empty",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 28,
+        "position": 3,
+        "name": "Open The Curtains Wide",
+        "action": "Open the curtains as soon as you come down each morning",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 29,
+        "position": 4,
+        "name": "Wipe The Kitchen Counter",
+        "action": "Wipe the counter with a damp cloth after every dinner",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 30,
+        "position": 5,
+        "name": "Read Tomorrow's Diary",
+        "action": "Look at tomorrow's plans and lay out the things you need",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 31,
+        "position": 6,
+        "name": "Water Your Herb Pots",
+        "action": "Feel the soil of the herb pots and water any that are dry",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 32,
+        "position": 7,
+        "name": "Empty The Lint Trap",
+        "action": "Pull the fluff out of the dryer lint trap after every load",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 33,
+        "position": 8,
+        "name": "Take Your Daily Vitamins",
+        "action": "Take your vitamins with a glass of water at breakfast",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 34,
+        "position": 9,
+        "name": "Sort The Morning Post",
+        "action": "Open your post at the door and recycle the junk mail now",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 35,
+        "position": 10,
+        "name": "Charge The Headphones",
+        "action": "Plug the headphones in to charge before you go to dinner",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 36,
+        "position": 11,
+        "name": "Plan Your Top Three Tasks",
+        "action": "List the three tasks that matter most today on paper",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 37,
+        "position": 12,
+        "name": "Stretch Your Calves",
+        "action": "Rise up on your toes ten times while the toast is browning",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 38,
+        "position": 13,
+        "name": "Hang Up Your Coat",
+        "action": "Hang your coat on its own hook, not over the back of a chair",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 39,
+        "position": 14,
+        "name": "Rinse The Coffee Pot",
+        "action": "Rinse the coffee pot and leave it upside down on the rack",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 40,
+        "position": 15,
+        "name": "Tidy The Shoe Rack",
+        "action": "Pair up the shoes on the rack and carry any strays upstairs",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 41,
+        "position": 16,
+        "name": "Turn On The Dishwasher",
+        "action": "Start the dishwasher before bed if it is over half full",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 42,
+        "position": 17,
+        "name": "Breathe Before Calls",
+        "action": "Take two slow breaths before you answer a work phone call",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 43,
+        "position": 18,
+        "name": "Check The Weather",
+        "action": "Check the weather before you choose a coat for the day ahead",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 44,
+        "position": 19,
+        "name": "Put Keys In The Bowl",
+        "action": "Drop your keys and wallet into the bowl by the front door",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 45,
+        "position": 20,
+        "name": "Clean Your Glasses",
+        "action": "Polish your glasses with the soft lens cloth before reading",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 46,
+        "position": 21,
+        "name": "Feed The Cat First",
+        "action": "Feed the cat and fill up her water bowl before you make tea",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 47,
+        "position": 22,
+        "name": "Back Up Your Photos",
+        "action": "Plug the phone in at night so all the day's photos back up",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 48,
+        "position": 23,
+        "name": "Wipe Down The Cool Hob",
+        "action": "Wipe the hob once it has cooled so spills never bake on",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 49,
+        "position": 24,
+        "name": "Close The Work Laptop",
+        "action": "Close the laptop lid at the end of work and tuck it away",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 50,
+        "position": 25,
+        "name": "Fold The Sofa Blanket",
+        "action": "Fold the sofa blanket over the arm when you go up to bed",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 51,
+        "position": 26,
+        "name": "Check The Back Door",
+        "action": "Make sure the back door is locked before the lights go out",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 52,
+        "position": 27,
+        "name": "Pack Tomorrow's Lunch",
+        "action": "Pack tomorrow's lunch in a box and keep it in the fridge",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 53,
+        "position": 28,
+        "name": "Move For Two Minutes",
+        "action": "Walk around the house for two minutes after every meeting",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 54,
+        "position": 29,
+        "name": "Floss After Brushing",
+        "action": "Floss between every tooth after you brush them each night",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 55,
+        "position": 30,
+        "name": "Write Three Thanks",
+        "action": "Write down three good things about the day before you sleep",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 56,
+        "position": 31,
+        "name": "Air Out The Bedroom",
+        "action": "Open the window wide for ten minutes when you make the bed",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 57,
+        "position": 32,
+        "name": "Set Out Your Clothes",
+        "action": "Lay out tomorrow's clothes on your chair before you sleep",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 58,
+        "position": 33,
+        "name": "Clear The Desk Top",
+        "action": "Put every pen and paper back in its place when work is over",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 59,
+        "position": 34,
+        "name": "Check The Fridge First",
+        "action": "Look in the fridge and eat the food that goes off first",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 60,
+        "position": 35,
+        "name": "Drink Before Coffee",
+        "action": "Drink one glass of water before you pour your first coffee",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 61,
+        "position": 36,
+        "name": "Unload The Warm Dryer",
+        "action": "Take the washing out of the dryer while it is still warm",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 62,
+        "position": 37,
+        "name": "Reply To Old Messages",
+        "action": "Answer every message that has waited for more than a day",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 63,
+        "position": 38,
+        "name": "Return The Mugs Today",
+        "action": "Take every mug back to the kitchen when you leave a room",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 64,
+        "position": 39,
+        "name": "Stand Up Straight",
+        "action": "Roll your shoulders back and stand tall as your kettle boils",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 65,
+        "position": 40,
+        "name": "Empty The Kitchen Bin",
+        "action": "Take the bin bag out to the wheelie bin when it fills up",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 66,
+        "position": 41,
+        "name": "Wash Your Hands Well",
+        "action": "Wash with soap for twenty seconds as soon as you get home",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 67,
+        "position": 42,
+        "name": "Rest Your Tired Eyes",
+        "action": "Focus on something far away for twenty seconds every hour",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 68,
+        "position": 43,
+        "name": "Prep The Coffee Machine",
+        "action": "Fill the machine with water and beans the night before",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 69,
+        "position": 44,
+        "name": "Recycle The Boxes",
+        "action": "Flatten the delivery boxes and put them in the recycling bin",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 70,
+        "position": 45,
+        "name": "Check Your Desk Posture",
+        "action": "Sit back with both your feet flat on the floor at work",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 71,
+        "position": 46,
+        "name": "Note The Shopping",
+        "action": "Add anything that has just run out to your shopping list now",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 72,
+        "position": 47,
+        "name": "Lock The Car Twice",
+        "action": "Press the lock button and wait for the beep as you walk off",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 73,
+        "position": 48,
+        "name": "Switch Off The Plugs",
+        "action": "Switch off the plugs you don't need on your way up to bed",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      },
+      {
+        "tip_id": 74,
+        "position": 49,
+        "name": "Read Ten Pages In Bed",
+        "action": "Read ten pages of your book in bed instead of your phone",
+        "status": "approved",
+        "bucket": 1,
+        "audience": "adults"
+      }
+    ]
+  },
+  "unplaced": [
+    {
+      "id": 19,
+      "name": "Lights Off As You Leave",
+      "action": "Switch off the light every time you leave a room",
+      "reason": "Lights left on in empty rooms waste power all day.",
+      "bucket": 1,
+      "audience": "kids+",
+      "status": "approved",
+      "source_id": 5,
+      "source_ref": "youtube:DEMOcoffee1",
+      "start_s": 248,
+      "start_url": "https://www.youtube.com/watch?v=DEMOcoffee1&t=248s",
+      "locator": null,
+      "evidence_url": null,
+      "duplicate_of": null,
+      "duplicate_of_tip": null,
+      "possible_duplicate_of": null,
+      "possible_duplicate_of_tip": null,
+      "note": null,
+      "list_ids": [],
+      "created_at": "2026-11-08T12:00:00Z",
+      "updated_at": "2026-11-08T12:00:00Z"
+    },
+    {
+      "id": 20,
+      "name": "Shopping List On The Fridge",
+      "action": "Add what runs out to the list on the fridge door",
+      "reason": "Writing it down at once saves a second trip to the shop.",
+      "bucket": 1,
+      "audience": "adults",
+      "status": "approved",
+      "source_id": 5,
+      "source_ref": "youtube:DEMOcoffee1",
+      "start_s": 290,
+      "start_url": "https://www.youtube.com/watch?v=DEMOcoffee1&t=290s",
+      "locator": null,
+      "evidence_url": null,
+      "duplicate_of": null,
+      "duplicate_of_tip": null,
+      "possible_duplicate_of": null,
+      "possible_duplicate_of_tip": null,
+      "note": null,
       "list_ids": [],
       "created_at": "2026-11-08T12:00:00Z",
       "updated_at": "2026-11-08T12:00:00Z"

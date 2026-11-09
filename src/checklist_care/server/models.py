@@ -12,9 +12,11 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Annotated, Final
 
+from fastapi import Path
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictInt, StrictStr
 
 from checklist_care import proposal
+from checklist_care.errors import ApiNotFoundError
 from checklist_care.limits import (
     ACTION_MAX,
     AUDIENCES_TIP,
@@ -50,6 +52,16 @@ def _one_of[Member: (str, int)](members: Sequence[Member]) -> Callable[[Member],
 
 RowId = Annotated[StrictInt, Field(ge=1, le=ID_MAX)]
 """A stored row id: a whole number from 1 to ``ID_MAX``."""
+
+ListId = Annotated[int, Path(ge=1, le=ID_MAX)]
+"""A list id in a path (``/lists/{id}/items``, ``/print/lists/{id}``): 1 to ``ID_MAX``."""
+
+
+def no_such_list(list_id: int) -> ApiNotFoundError:
+    """The 404 for a :data:`ListId` that names no list."""
+
+    return ApiNotFoundError(f"there is no list #{list_id}")
+
 
 TipName = Annotated[StrictStr, AfterValidator(_text_rule(("NAME_MAX", NAME_MAX)))]
 TipAction = Annotated[StrictStr, AfterValidator(_text_rule(("ACTION_MAX", ACTION_MAX)))]

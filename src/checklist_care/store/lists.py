@@ -59,6 +59,75 @@ def lists_by_id(conn: sqlite3.Connection) -> dict[int, ListRow]:
     return {row.id: row for row in all_lists(conn)}
 
 
+def get_list(conn: sqlite3.Connection, list_id: int) -> ListRow | None:
+    """The list ``list_id``, or None."""
+
+    row = conn.execute(f"SELECT {_COLUMNS} FROM list WHERE id = ?", (list_id,)).fetchone()
+    return None if row is None else _row(row)
+
+
+def insert_list(
+    conn: sqlite3.Connection,
+    *,
+    place: str,
+    audience: str,
+    cue: str,
+    sort_order: int,
+    list_id: int | None = None,
+) -> int:
+    """Insert a list and return its id (``list_id`` when given, else the next free one).
+    The caller holds the transaction and has checked ``audience`` against
+    ``limits.AUDIENCES_LIST``; the schema refuses a repeated place and audience."""
+
+    if not conn.in_transaction:
+        raise RuntimeError("insert_list must run inside connection.transaction()")
+    cursor = conn.execute(
+        "INSERT INTO list (id, place, audience, cue, sort_order) VALUES (?, ?, ?, ?, ?)",
+        (list_id, place, audience, cue, sort_order),
+    )
+    new_id = cursor.lastrowid
+    if new_id is None:  # pragma: no cover - an INSERT always sets lastrowid
+        raise RuntimeError("the list insert returned no row id")
+    return int(new_id)
+
+
+@dataclass(frozen=True)
+class ListItemRow:
+    """One tip on a list, at its ``position`` (1 = first), pending or approved."""
+
+    tip_id: int
+    position: int
+    name: str
+    action: str
+    status: str
+    bucket: int
+    audience: str
+
+
+def list_items(conn: sqlite3.Connection, list_id: int) -> list[ListItemRow]:
+    """The tips on list ``list_id`` in ``position`` order, whatever their status."""
+
+    rows = conn.execute(
+        "SELECT list_item.tip_id AS tip_id, list_item.position AS position, tip.name AS name, "
+        "tip.action AS action, tip.status AS status, tip.bucket AS bucket, "
+        "tip.audience AS audience FROM list_item JOIN tip ON tip.id = list_item.tip_id "
+        "WHERE list_item.list_id = ? ORDER BY list_item.position, list_item.tip_id",
+        (list_id,),
+    )
+    return [
+        ListItemRow(
+            tip_id=int(row["tip_id"]),
+            position=int(row["position"]),
+            name=str(row["name"]),
+            action=str(row["action"]),
+            status=str(row["status"]),
+            bucket=int(row["bucket"]),
+            audience=str(row["audience"]),
+        )
+        for row in rows
+    ]
+
+
 def list_ids_by_tip(conn: sqlite3.Connection) -> dict[int, list[int]]:
     """The ids of the lists each placed tip is on, ascending. Unplaced tips are absent."""
 

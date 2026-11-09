@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from checklist_care.limits import (
+    BUCKET_DAILY,
     BUCKET_LEFT_OUT,
     TIP_STATUS_APPROVED,
     TIP_STATUS_PENDING,
@@ -234,8 +235,14 @@ def find_tips(
     bucket: int | None = None,
     audience: str | None = None,
     source_id: int | None = None,
+    unplaced: bool = False,
 ) -> list[TipDetail]:
-    """The tips that match every given filter (None matches all), by id, with their lists."""
+    """The tips that match every given filter (None matches all), by id, with their lists.
+
+    ``unplaced`` keeps only the approved daily (bucket-1) tips that are on no list:
+    the tips that would print if they were placed, which the Lists page shows as
+    "Not on any list yet". It narrows the other filters (they all apply).
+    """
 
     clauses: list[str] = []
     params: list[object] = []
@@ -248,6 +255,12 @@ def find_tips(
         if value is not None:
             clauses.append(f"{column} = ?")
             params.append(value)
+    if unplaced:
+        clauses.append(
+            "tip.status = ? AND tip.bucket = ? "
+            "AND NOT EXISTS (SELECT 1 FROM list_item WHERE list_item.tip_id = tip.id)"
+        )
+        params.extend([TIP_STATUS_APPROVED, BUCKET_DAILY])
     where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
     placed = list_ids_by_tip(conn)
     rows = conn.execute(

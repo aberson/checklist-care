@@ -1,0 +1,224 @@
+/* A4 print sheets (plan §4.7): one 12pt Arial line per tip, line-height 1.25.
+
+   The named page follows extra-credit/frontend/src/web/print/print-a4.css. On screen the
+   sheet is drawn as an A4 page (210mm wide with 10mm padding), so each row is measured at
+   the width it prints at (190mm).
+
+   Capacity: the page box is 297mm - 2 x 10mm = 277mm tall. The header takes 20mm and each
+   row 15pt (12pt x 1.25, about 5.29mm), so PRINT_CAPACITY = 48 rows end at 274mm on page 1,
+   and a 49th row would end at 279.3mm, so it moves to page 2. web/e2e/print.spec.ts prints
+   the demo's PRINT_CAPACITY and PRINT_CAPACITY + 1 lists to check both.
+
+   Anything marked .screen-only shows on screen and is hidden on paper. */
+
+@page checklist-a4 {
+  size: A4;
+  margin: 10mm;
+}
+
+.print-page {
+  max-width: none;
+}
+
+.print-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.print-button {
+  padding: 0.35rem 1.1rem;
+  border: 1px solid #1a7f37;
+  border-radius: 6px;
+  background: #1f883d;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.print-hint {
+  margin: 0;
+  color: #57606a;
+  font-size: 0.9rem;
+}
+
+.print-warning {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 4px solid #cf222e;
+  background: #ffebe9;
+  color: #82071e;
+}
+
+.print-warning p,
+.print-warning ul {
+  margin: 0;
+}
+
+.print-warning ul {
+  margin-top: 0.25rem;
+  padding-left: 1.25rem;
+}
+
+.print-preview {
+  overflow-x: auto;
+  padding: 1rem;
+  border-radius: 8px;
+  background: #eaeef2;
+}
+
+.print-sheet {
+  page: checklist-a4;
+  box-sizing: border-box;
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 10mm;
+  background: #ffffff;
+  color: #000000;
+  box-shadow: 0 1px 4px rgba(31, 35, 40, 0.3);
+  font-family: Arial, "Liberation Sans", Helvetica, sans-serif;
+  font-size: 12pt;
+  line-height: 1.25;
+}
+
+.print-header {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 20mm;
+  padding-bottom: 1.5mm;
+  border-bottom: 0.75pt solid #000000;
+}
+
+.print-title {
+  margin: 0;
+  overflow: hidden;
+  font-size: 16pt;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.print-date {
+  margin: 0.5mm 0 0;
+  color: #333333;
+  font-size: 8pt;
+  line-height: 1.25;
+}
+
+.print-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.print-row {
+  display: flex;
+  align-items: center;
+  gap: 5pt;
+  font-size: 12pt;
+  line-height: 1.25;
+  break-inside: avoid;
+}
+
+.print-box {
+  flex: none;
+  box-sizing: border-box;
+  width: 10pt;
+  height: 10pt;
+  border: 1pt solid #000000;
+  background: #ffffff;
+}
+
+.print-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.print-name {
+  font-weight: 700;
+}
+
+.print-group-title {
+  margin: 3mm 0 0.5mm;
+  font-size: 12pt;
+  font-weight: 700;
+  line-height: 1.25;
+  text-decoration: underline;
+  break-after: avoid;
+}
+
+.print-empty {
+  margin: 2mm 0 0;
+  color: #57606a;
+  font-style: italic;
+}
+
+@media screen {
+  .print-row-overflow .print-text {
+    background: #ffebe9;
+    box-shadow: inset 0 -2px 0 #cf222e;
+  }
+}
+
+/* Paper: the light theme always, backgrounds kept, no screen controls, no app chrome
+   (the print rules of .claude/references/shareable-docs.md). The !important rules win over
+   app.css, which the bundle loads after this file. */
+@media print {
+  :root,
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .app-header,
+  .app-alert,
+  .screen-only {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+
+  .print-preview {
+    overflow: visible;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+  }
+
+  .print-sheet {
+    width: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  .print-header,
+  .print-group-title {
+    break-after: avoid;
+  }
+
+  .print-row {
+    break-inside: avoid;
+  }
+}

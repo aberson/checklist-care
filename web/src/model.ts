@@ -63,6 +63,44 @@ export interface ListInfo {
   over_capacity: boolean;
 }
 
+/** A tip on a list, as `GET /api/lists/{id}/items` returns it (pending or approved). */
+export interface ListItem {
+  tip_id: number;
+  position: number;
+  name: string;
+  action: string;
+  status: string;
+  bucket: number;
+  audience: string;
+}
+
+/** One printed row: the bold name, then the action. */
+export interface PrintItem {
+  name: string;
+  action: string;
+}
+
+/** A location sheet, as `GET /api/print/lists/{id}` returns it: approved daily tips only. */
+export interface LocationSheet {
+  title: string;
+  audience: string;
+  generated_at: string;
+  items: PrintItem[];
+  over_capacity: boolean;
+}
+
+/** One audience's group on the activities sheet. */
+export interface ActivityGroup {
+  audience: string;
+  items: PrintItem[];
+}
+
+/** The activities sheet, as `GET /api/print/activities` returns it: approved bucket-2 tips. */
+export interface ActivitiesSheet {
+  generated_at: string;
+  groups: ActivityGroup[];
+}
+
 /** The fields `PATCH /api/tips/{id}` takes; a field left out keeps its value. */
 export interface TipPatch {
   name?: string;
@@ -123,4 +161,9 @@ export function sourceKindLabel(kind: string, meta: Meta | null): string {
     [meta.limits.SOURCE_KIND_MANUAL]: "My own tips",
   };
   return labels[kind] ?? kind;
+}
+
+/** An audience as a heading shows it: `kids+` is `Kids+`, `adults` is `Adults`. */
+export function audienceLabel(audience: string): string {
+  return audience.charAt(0).toUpperCase() + audience.slice(1);
 }

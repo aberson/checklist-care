@@ -1336,6 +1336,7 @@ module called from production code is exercised through its caller: the CLI subc
   - The vitest Lists index links the Coffee Machine — Adults entry to `#/print/list/7`.
   - The full gate, including `test:print` through `test_web_suites.py`, is green.
 - **Depends on:** 6
+- **Status:** DONE (2026-11-08)
 
 <!-- autofix-applied: 2026-11-08 -->
 ### Step 8: Smoke gate — one real cycle, end to end

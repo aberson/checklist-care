@@ -102,6 +102,29 @@ describe("App", () => {
     );
   });
 
+  it("shows a print sheet at #/print/list/<id>, with no nav page marked current", async () => {
+    stubApi(
+      get("/api/print/lists/7", {
+        status: 200,
+        body: {
+          title: "Coffee Machine — Adults",
+          audience: "adults",
+          generated_at: "2026-11-08T12:00:00Z",
+          items: [{ name: "Glass Of Water First", action: "Drink a glass of water while the coffee brews" }],
+          over_capacity: false,
+        },
+      }),
+      ...demoRoutes(),
+    );
+    window.location.hash = "#/print/list/7";
+    render(<App />);
+    expect(await screen.findByRole("article", { name: "Coffee Machine — Adults" })).toBeTruthy();
+    const nav = screen.getByRole("navigation", { name: "Main" });
+    expect(within(nav).getAllByRole("link").every((link) => link.getAttribute("aria-current") === null)).toBe(
+      true,
+    );
+  });
+
   it("shows an alert when /api/meta fails", async () => {
     stubApi(
       get("/api/meta", {
@@ -123,6 +146,16 @@ describe("parseRoute", () => {
       expect(parseRoute(`#/${item.page}/`)).toEqual({ kind: "page", page: item.page });
       expect(parseRoute(`#${item.page}`)).toEqual({ kind: "page", page: item.page });
     }
+  });
+
+  it("maps the print sheets", () => {
+    expect(parseRoute("#/print/list/7")).toEqual({ kind: "print-list", listId: 7 });
+    expect(parseRoute("#/print/list/12/")).toEqual({ kind: "print-list", listId: 12 });
+    expect(parseRoute("#/print/activities")).toEqual({ kind: "print-activities" });
+    for (const path of ["print/list/0", "print/list/07", "print/list/x", "print/list", "print/list/7/extra"]) {
+      expect(parseRoute(`#/${path}`)).toEqual({ kind: "not-found", path });
+    }
+    expect(parseRoute(`#/print/list/${"9".repeat(20)}`)).toEqual({ kind: "not-found", path: `print/list/${"9".repeat(20)}` });
   });
 
   it("sends an empty hash to the default page and anything else to not found", () => {

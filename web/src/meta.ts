@@ -20,6 +20,7 @@ export interface MetaLimits {
   BUCKET_DAILY: number;
   BUCKET_LEFT_OUT: number;
   TIP_STATUSES: readonly string[];
+  TIP_STATUS_APPROVED: string;
   SOURCE_KIND_YOUTUBE: string;
   SOURCE_KIND_WIKI: string;
   SOURCE_KIND_TEXT: string;

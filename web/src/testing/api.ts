@@ -1,16 +1,19 @@
 // Test helpers: the demo server's payloads and a fetch stub that answers by method and path.
 // fixtures/demoReview.json is what `checklist-care serve --demo` returns for /api/meta (minus
-// the version), /api/sources, /api/lists and /api/tips?status=pending;
+// the version), /api/sources, /api/lists, /api/tips?status=pending, every
+// /api/lists/{id}/items (keyed by list id) and /api/tips?unplaced=true;
 // tests/integration/test_api_review.py fails when the two differ.
 import { vi } from "vitest";
 import demo from "../fixtures/demoReview.json";
 import type { Meta } from "../meta";
-import type { ListInfo, SourceInfo, Tip } from "../model";
+import type { ListInfo, ListItem, SourceInfo, Tip } from "../model";
 
 export const META: Meta = { version: "0.0.0-test", ...(demo.meta as Omit<Meta, "version">) };
 export const DEMO_SOURCES = demo.sources as SourceInfo[];
 export const DEMO_LISTS = demo.lists as ListInfo[];
 export const DEMO_TIPS = demo.tips as Tip[];
+export const DEMO_LIST_ITEMS = demo.list_items as Record<string, ListItem[]>;
+export const DEMO_UNPLACED = demo.unplaced as Tip[];
 
 /** A recorded request: its method, its path (with the query) and its parsed JSON body. */
 export interface SentRequest {
@@ -74,5 +77,14 @@ export function demoRoutes(tips: readonly Tip[] = DEMO_TIPS): StubRoute[] {
     get("/api/sources", ok(DEMO_SOURCES)),
     get("/api/lists", ok(DEMO_LISTS)),
     get("/api/tips?status=pending", ok(tips)),
+    ...demoListsRoutes(),
+  ];
+}
+
+/** The rest of the demo Lists index: each list's items and the unplaced approved daily tips. */
+export function demoListsRoutes(): StubRoute[] {
+  return [
+    get("/api/tips?unplaced=true", ok(DEMO_UNPLACED)),
+    ...Object.entries(DEMO_LIST_ITEMS).map(([id, items]) => get(`/api/lists/${id}/items`, ok(items))),
   ];
 }

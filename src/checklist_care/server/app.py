@@ -45,6 +45,7 @@ from checklist_care.server import (
     DIST_DIR,
     routes_lists,
     routes_meta,
+    routes_print,
     routes_review,
     routes_sources,
     routes_tips,
@@ -56,7 +57,14 @@ INDEX_FILE: Final = "index.html"
 API_ERROR_CODES: Final = {error.status: error.code for error in API_ERRORS}
 """The three API error statuses and their codes (plan §6), from ``errors.py``."""
 
-ROUTERS: Final = (routes_meta, routes_tips, routes_review, routes_lists, routes_sources)
+ROUTERS: Final = (
+    routes_meta,
+    routes_tips,
+    routes_review,
+    routes_lists,
+    routes_sources,
+    routes_print,
+)
 """The modules whose ``router`` serves ``/api``."""
 
 _VALUE_ERROR_PREFIX: Final = "Value error, "

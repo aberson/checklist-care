@@ -1,5 +1,10 @@
 """``GET /api/tips``, ``PATCH /api/tips/{id}`` and ``DELETE /api/tips/{id}`` (plan §6).
 
+``GET /tips`` takes the filters ``status``, ``bucket``, ``audience``, ``source_id``
+and ``unplaced``, all applied together. ``unplaced=true`` keeps only the approved
+daily (bucket-1) tips that are on no list, the Lists page's "Not on any list yet"
+panel; ``unplaced=false`` or no ``unplaced`` adds no filter.
+
 A tip in a response carries every stored field, its ``list_ids``, its source's ref,
 a ``start_url`` (the YouTube link that starts at ``start_s``, else null) and, for
 the duplicate badges, a short view of the tips it names in ``duplicate_of`` and
@@ -134,6 +139,7 @@ def list_tips(
     bucket: int | None = None,
     audience: str | None = None,
     source_id: Annotated[int | None, Query(ge=1, le=ID_MAX)] = None,
+    unplaced: bool | None = None,
 ) -> list[dict[str, Any]]:
     """The tips matching every given filter, by id, each with its ``list_ids``."""
 
@@ -142,7 +148,12 @@ def list_tips(
     _member("audience", audience, AUDIENCES_TIP)
     with database.session() as conn, connection.snapshot(conn):
         found = tip_store.find_tips(
-            conn, status=status, bucket=bucket, audience=audience, source_id=source_id
+            conn,
+            status=status,
+            bucket=bucket,
+            audience=audience,
+            source_id=source_id,
+            unplaced=unplaced is True,
         )
         return tips_json(conn, found)
 

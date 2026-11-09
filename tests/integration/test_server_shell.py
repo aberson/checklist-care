@@ -1057,7 +1057,7 @@ def test_the_demo_database_is_the_seeded_schema(tmp_path: Path) -> None:
         assert conn.execute("PRAGMA user_version").fetchone()[0] == connection.SCHEMA_VERSION
         lists = conn.execute("SELECT count(*) FROM list").fetchone()[0]
         buckets = conn.execute("SELECT count(*) FROM bucket").fetchone()[0]
-    assert (lists, buckets) == (len(seed.LISTS), len(seed.BUCKETS))
+    assert (lists, buckets) == (len(seed.LISTS) + len(run.demo.DEMO_LISTS), len(seed.BUCKETS))
     for name in paths.SUBDIRECTORIES:
         assert (tmp_path / "demo" / name).is_dir()
 
