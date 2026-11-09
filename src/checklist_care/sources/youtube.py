@@ -19,11 +19,9 @@ import json
 import math
 import os
 import re
-import signal
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
-from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, Final
 from urllib.parse import parse_qs, urlsplit
@@ -38,6 +36,7 @@ from checklist_care.limits import (
     TRANSCRIPT_KIND_GENERATED,
     TRANSCRIPT_KIND_MANUAL,
 )
+from checklist_care.processes import NEW_SESSION, NO_WINDOW, kill_tree
 from checklist_care.sources.packet import Chapter, Packet, Segment, Transcript
 
 VIDEO_ID_PATTERN: Final = re.compile(r"[A-Za-z0-9_-]{11}")
@@ -63,13 +62,10 @@ TRANSCRIPT_LANGUAGES: Final = ("en",)
 PASTE_HINT: Final = "paste the transcript text instead"
 
 YTDLP_TIMEOUT_S: Final = 60.0
-KILL_WAIT_S: Final = 10.0
-"""How long to wait for a killed process tree to release its pipes."""
 
 _STDERR_TAIL_MAX: Final = 200
 _INPUT_ECHO_MAX: Final = 200
 _DETAIL_MAX: Final = 200
-_NO_WINDOW: Final = int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
 class YtDlpError(Exception):
@@ -279,35 +275,6 @@ def _stderr_tail(stderr: str) -> str:
     return one_line(lines[-1])[:_STDERR_TAIL_MAX] if lines else "no error output"
 
 
-def _kill_tree(process: subprocess.Popen[bytes]) -> None:
-    """Kill the process and every descendant, then reap it.
-
-    On Windows the venv ``python.exe`` is a launcher whose child is the real
-    interpreter, and a surviving descendant keeps the output pipes open, so
-    killing only the direct child is not enough.
-    """
-
-    if sys.platform == "win32":
-        if process.poll() is None:
-            with suppress(OSError, subprocess.SubprocessError):
-                subprocess.run(
-                    ["taskkill", "/T", "/F", "/PID", str(process.pid)],
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    creationflags=_NO_WINDOW,
-                    timeout=KILL_WAIT_S,
-                    check=False,
-                )
-    else:
-        with suppress(OSError):
-            os.killpg(process.pid, signal.SIGKILL)
-    with suppress(OSError):
-        process.kill()
-    with suppress(subprocess.SubprocessError, ValueError, OSError):
-        process.communicate(timeout=KILL_WAIT_S)
-
-
 def run_json_command(command: Sequence[str], *, timeout: float) -> dict[str, Any]:
     """Run ``command`` and parse its stdout as one JSON object.
 
@@ -329,18 +296,18 @@ def run_json_command(command: Sequence[str], *, timeout: float) -> dict[str, Any
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=env,
-            creationflags=_NO_WINDOW,
-            start_new_session=os.name != "nt",
+            creationflags=NO_WINDOW,
+            start_new_session=NEW_SESSION,
         )
     except OSError as error:
         raise YtDlpError(f"cannot start yt-dlp: {error}") from error
     try:
         stdout, stderr = process.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        _kill_tree(process)
+        kill_tree(process)
         raise YtDlpError(f"no result within {timeout:g} s; the process tree was killed") from None
     except BaseException:
-        _kill_tree(process)
+        kill_tree(process)
         raise
     if process.returncode != 0:
         tail = _stderr_tail(stderr.decode("utf-8", errors="replace"))

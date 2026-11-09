@@ -7,6 +7,8 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.138.1",
+    "uvicorn>=0.49.0",
     "youtube-transcript-api>=1.2.5,<2",
     "yt-dlp>=2026.10.26",
 ]
@@ -28,6 +30,7 @@ packages = ["src/checklist_care"]
 [dependency-groups]
 # Every QA tool lives here, so the declared bare `uv sync` installs it.
 dev = [
+    "httpx2>=2.5.0",
     "mypy>=2.1.0",
     "pytest>=9.1.1",
     "ruff>=0.15.20",

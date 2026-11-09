@@ -12,7 +12,7 @@ import time
 
 import pytest
 
-from checklist_care import USER_AGENT
+from checklist_care import USER_AGENT, processes
 from checklist_care.sources import youtube
 from checklist_care.sources.packet import Chapter, Segment
 
@@ -105,7 +105,7 @@ def test_timeout_kills_the_whole_process_tree() -> None:
     with pytest.raises(youtube.YtDlpError, match="no result within 3 s"):
         youtube.run_json_command(_python(child), timeout=timeout)
     elapsed = time.monotonic() - started
-    assert elapsed < timeout + youtube.KILL_WAIT_S - 2, elapsed
+    assert elapsed < timeout + processes.KILL_WAIT_S - 2, elapsed
 
 
 # --- metadata --------------------------------------------------------------------------

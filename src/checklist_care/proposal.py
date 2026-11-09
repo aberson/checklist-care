@@ -66,14 +66,15 @@ from checklist_care.limits import (
     line_length,
     tips_max,
 )
+from checklist_care.server import base_url
 from checklist_care.store import lists as list_store
 from checklist_care.store import sources as source_store
 from checklist_care.store import tips as tip_store
 
 PROPOSAL_SCHEMA: Final = "checklist-care.proposal/1"
 
-REVIEW_URL: Final = "http://127.0.0.1:8450/#/review"
-"""The review inbox of the daily server (plan §1, §2)."""
+REVIEW_URL: Final = f"{base_url()}/#/review"
+"""The review inbox of the daily server (plan §1, §2), built from the server's address."""
 
 ARCHIVE_SUFFIX: Final = ".1.json"
 """``proposals/<source-key>.1.json``: the one accepted proposal of a source."""

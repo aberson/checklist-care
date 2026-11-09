@@ -1263,6 +1263,7 @@ module called from production code is exercised through its caller: the CLI subc
   - `test_web_suites.py` runs typecheck and vitest green.
   - The full gate is green.
 - **Depends on:** 3
+- **Status:** DONE (2026-11-08)
 
 <!-- autofix-applied: 2026-11-08 -->
 ### Step 6: Review inbox

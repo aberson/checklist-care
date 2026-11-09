@@ -109,14 +109,16 @@ def snapshot(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
             conn.execute("ROLLBACK")
 
 
-def connect(path: Path) -> sqlite3.Connection:
+def connect(path: Path, *, check_same_thread: bool = True) -> sqlite3.Connection:
     """Open the database at ``path``, applying the pragmas and the schema.
 
     Creates the file if it is missing; callers that must not create a database
-    check for it first. The parent directory must exist.
+    check for it first. The parent directory must exist. ``check_same_thread=False``
+    is for the server's one shared handle, which its own lock serializes
+    (``server/app.py``).
     """
 
-    conn = sqlite3.connect(path, isolation_level=None)
+    conn = sqlite3.connect(path, isolation_level=None, check_same_thread=check_same_thread)
     try:
         conn.row_factory = sqlite3.Row
         for pragma in PRAGMAS:

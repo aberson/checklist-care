@@ -33,6 +33,7 @@ from checklist_care.errors import (
     one_line,
 )
 from checklist_care.limits import BUCKET_IDS, TIP_STATUS_PENDING
+from checklist_care.server import DAILY_PORT, HOST
 from checklist_care.sources import packet, youtube
 from checklist_care.store import sources as source_store
 
@@ -138,7 +139,44 @@ def build_parser() -> argparse.ArgumentParser:
     )
     propose.add_argument("file", metavar="FILE", help="the proposal JSON file")
     propose.set_defaults(handler=_cmd_propose)
+
+    serve = commands.add_parser(
+        "serve",
+        parents=[common],
+        help=f"serve the review app and its API on http://{HOST}:<port>",
+        description=(
+            f"Serve /api/* and the built web app on http://{HOST}:<port>, always on the "
+            f"loopback address {HOST}, with one worker. Stop it with Ctrl+C."
+        ),
+    )
+    serve.add_argument(
+        "--port",
+        type=_port,
+        default=DAILY_PORT,
+        help=f"the port to listen on (default {DAILY_PORT})",
+    )
+    serve.add_argument(
+        "--build",
+        action="store_true",
+        help="build the web app with npm first (npm install when web/node_modules is absent)",
+    )
+    serve.add_argument(
+        "--demo",
+        action="store_true",
+        help="serve synthetic demo data from a fresh temp directory instead of the data directory",
+    )
+    serve.set_defaults(handler=_cmd_serve)
     return parser
+
+
+def _port(text: str) -> int:
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a port number") from None
+    if not 1 <= value <= 65535:
+        raise argparse.ArgumentTypeError(f"{value} is not a port number from 1 to 65535")
+    return value
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -300,6 +338,15 @@ def _cmd_propose(args: argparse.Namespace, data_dir: paths.DataDir) -> int:
     for line in result.summary_lines():
         _out(line)
     return EXIT_OK
+
+
+def _cmd_serve(args: argparse.Namespace, data_dir: paths.DataDir) -> int:
+    # Imported here so the other commands do not load FastAPI and uvicorn.
+    from checklist_care.server import run
+
+    if not args.demo:
+        _require_database(data_dir)
+    return run.serve(data_dir.db_path, port=args.port, build=args.build, demo_mode=args.demo)
 
 
 if __name__ == "__main__":
