@@ -1102,7 +1102,7 @@ module called from production code is exercised through its caller: the CLI subc
   - `.gitignore`, `.gitattributes` (`* text=auto eol=lf`) and the MIT `LICENSE`;
   - `PROJECT_URL` set from `git remote get-url origin`.
 - **Type:** code
-- **Issue:**
+- **Issue:** #1
 - **Flags:** --reviewers deep --isolation worktree
 - **Produces:** `pyproject.toml`, `uv.lock`, `src/checklist_care/{__init__,cli,errors,limits,paths}.py`,
   `src/checklist_care/db/{connection,seed}.py`, `src/checklist_care/db/schema.sql`,
@@ -1123,6 +1123,7 @@ module called from production code is exercised through its caller: the CLI subc
     `status --json`.
   - The full Python gate is green.
 - **Depends on:** none
+- **Status:** DONE (2026-11-08)
 
 <!-- autofix-applied: 2026-11-08 -->
 ### Step 2: YouTube fetch to a source packet
@@ -1134,7 +1135,7 @@ module called from production code is exercised through its caller: the CLI subc
     (`store/sources.py`), and print the four `fetch` lines;
   - map failures to stable exit codes.
 - **Type:** code
-- **Issue:**
+- **Issue:** #2
 - **Flags:** --reviewers code --isolation worktree
 - **Produces:** `src/checklist_care/sources/{youtube,packet}.py`, `src/checklist_care/store/sources.py`,
   the `fetch` subcommand, `tests/unit/test_youtube_url.py` (≥15 cases),
@@ -1162,7 +1163,7 @@ module called from production code is exercised through its caller: the CLI subc
   - `propose` decodes and validates the file, then imports pending tips with their placements in
     one transaction.
 - **Type:** code
-- **Issue:**
+- **Issue:** #3
 - **Flags:** --reviewers deep --isolation worktree
 - **Produces:** `src/checklist_care/{context,proposal,placement}.py`,
   `src/checklist_care/store/{tips,lists,buckets}.py`, both subcommands,
@@ -1200,7 +1201,7 @@ module called from production code is exercised through its caller: the CLI subc
     AGENTS.md `## Codex usage`. That section, written here, carries the §4.6 launch line as
     documentation; the operator confirms it in M3.
 - **Type:** code
-- **Issue:**
+- **Issue:** #4
 - **Flags:** --reviewers code --isolation worktree
 - **Produces:** `skills/checklist-ingest/core.md`, `skills/_shared/proposal-contract.md`,
   `.claude/skills/checklist-ingest/SKILL.md`, `.agents/skills/checklist-ingest/SKILL.md`,
@@ -1236,7 +1237,7 @@ module called from production code is exercised through its caller: the CLI subc
   Add the `web/` Vite + React + TypeScript scaffold (§2 pins) with the hash router and placeholder
   pages, and `tests/test_web_suites.py` (§11).
 - **Type:** code
-- **Issue:**
+- **Issue:** #5
 - **Flags:** --reviewers code --isolation worktree
 - **Produces:** `src/checklist_care/server/{app,run,demo,routes_meta}.py`, `web/package.json`,
   `web/package-lock.json`, `web/vite.config.ts`, `web/tsconfig.json`, `web/index.html`,
@@ -1270,7 +1271,7 @@ module called from production code is exercised through its caller: the CLI subc
   - Duplicate badges link to the original, and YouTube timestamp links open the video.
   - Approve one tip, mark it Left out, or approve all tips for a source.
 - **Type:** code
-- **Issue:**
+- **Issue:** #6
 - **Flags:** --reviewers full --ui --isolation worktree --start-cmd "uv run checklist-care serve --build --demo --port 8451" --ready-url http://127.0.0.1:8451/api/health --url http://127.0.0.1:8451/#/review
 - **Produces:** `src/checklist_care/server/routes_{tips,review,lists,sources}.py`,
   `web/src/pages/ReviewPage.tsx`, `web/src/components/TipEditor.tsx`, the demo seed additions
@@ -1307,7 +1308,7 @@ module called from production code is exercised through its caller: the CLI subc
     text at `LINE_MAX`. List 7 holds 6 approved tips, and there are ≥2 approved bucket-2 tips per
     audience.
 - **Type:** code
-- **Issue:**
+- **Issue:** #7
 - **Flags:** --reviewers full --ui --isolation worktree --start-cmd "uv run checklist-care serve --build --demo --port 8451" --ready-url http://127.0.0.1:8451/api/health --url http://127.0.0.1:8451/#/print/list/7
 - **Produces:** `src/checklist_care/printing.py`, `src/checklist_care/server/routes_print.py`,
   the `routes_lists.py` read handlers, the `GET /tips?unplaced=true` filter in `routes_tips.py`
@@ -1350,7 +1351,7 @@ module called from production code is exercised through its caller: the CLI subc
      refuses connections, then remove the temp dir (retrying briefly).
   This catches producer/consumer drift across fetch → packet → proposal → DB → API → print.
 - **Type:** code
-- **Issue:**
+- **Issue:** #8
 - **Flags:** --reviewers code --isolation worktree
 - **Produces:** `scripts/smoke.py`, `tests/integration/test_smoke_script.py` (runs
   `smoke.py --offline tests/fixtures/packet_youtube_synthetic.json` as a subprocess)
@@ -1370,7 +1371,7 @@ module called from production code is exercised through its caller: the CLI subc
   - **Add my own tip** (`POST /tips`): approved, manual source, optional reason. Basics like
     "Brush your teeth" go straight onto the chosen lists.
 - **Type:** code
-- **Issue:**
+- **Issue:** #9
 - **Flags:** --reviewers full --ui --isolation worktree --start-cmd "uv run checklist-care serve --build --demo --port 8451" --ready-url http://127.0.0.1:8451/api/health --url http://127.0.0.1:8451/#/library
 - **Produces:** `POST /tips` and `GET /tips` filters in `routes_tips.py`,
   `web/src/pages/LibraryPage.tsx`, `tests/integration/test_api_library.py`,
@@ -1392,7 +1393,7 @@ module called from production code is exercised through its caller: the CLI subc
 - **Problem:** Build the Buckets page `#/buckets` (`GET/PUT /buckets`) for editing bucket titles
   and rubrics. Edited rubrics are what the skill reads on the next ingest.
 - **Type:** code
-- **Issue:**
+- **Issue:** #10
 - **Flags:** --reviewers code --isolation worktree
 - **Produces:** `src/checklist_care/server/routes_buckets.py`, `web/src/pages/BucketsPage.tsx`,
   `tests/integration/test_rubric_roundtrip.py`, `web/src/pages/BucketsPage.test.tsx`
@@ -1413,7 +1414,7 @@ module called from production code is exercised through its caller: the CLI subc
   - add, remove and reorder tips on a list;
   - capacity and overlong-row warnings per list.
 - **Type:** code
-- **Issue:**
+- **Issue:** #11
 - **Flags:** --reviewers full --ui --isolation worktree --start-cmd "uv run checklist-care serve --build --demo --port 8451" --ready-url http://127.0.0.1:8451/api/health --url http://127.0.0.1:8451/#/lists
 - **Produces:** the remaining `routes_lists.py` handlers, `web/src/pages/ListsPage.tsx` (full),
   `tests/integration/test_api_lists.py`, `web/src/pages/ListsPage.test.tsx` (extended)
@@ -1436,7 +1437,7 @@ module called from production code is exercised through its caller: the CLI subc
   the inbox, then `fetch --text-file`) and its pasted-text branch (written to the inbox as UTF-8,
   then `fetch --text-file`), per §4.6 steps 1–2.
 - **Type:** code
-- **Issue:**
+- **Issue:** #12
 - **Flags:** --reviewers code --isolation worktree
 - **Produces:** `src/checklist_care/sources/text.py`, `fetch` text handling, updated
   `skills/checklist-ingest/core.md`, `tests/unit/test_text_normalize.py`,
@@ -1461,7 +1462,7 @@ module called from production code is exercised through its caller: the CLI subc
   - tail trim and `sections`;
   - the ref `wiki:<lang>:<canonical title>`.
 - **Type:** code
-- **Issue:**
+- **Issue:** #13
 - **Flags:** --reviewers code --isolation worktree
 - **Produces:** `src/checklist_care/sources/wiki.py`, `fetch` wiki handling,
   `tests/unit/test_wiki_url.py`, `tests/integration/test_cli_fetch_wiki.py` (mocked `urlopen`),
@@ -1491,7 +1492,7 @@ module called from production code is exercised through its caller: the CLI subc
   - the `degraded` flag;
   - the 300-tip cap.
 - **Type:** code
-- **Issue:**
+- **Issue:** #14
 - **Flags:** --reviewers code --isolation worktree
 - **Produces:** updated `skills/checklist-ingest/core.md` and `skills/_shared/proposal-contract.md`,
   updated `src/checklist_care/proposal.py`, `tests/fixtures/proposal_investigate.json`, additions
@@ -1520,7 +1521,7 @@ module called from production code is exercised through its caller: the CLI subc
   chapter **titles** only, never from transcript text. Step 16 adds the out-of-sample and
   investigate criteria.
 - **Type:** code
-- **Issue:**
+- **Issue:** #15
 - **Flags:** --reviewers deep --isolation worktree
 - **Produces:** `src/checklist_care/scoring/score.py` (engine, ABORT rules, IS criteria), the
   `eval score` subcommand in `cli.py`, `eval/labels/in_sample.json`, and the fixture packet
@@ -1553,7 +1554,7 @@ module called from production code is exercised through its caller: the CLI subc
   (schema in Appendix E) from the operator's labels and the chapter **titles** only. Also write
   the self-written anchor `eval/anchors/non_advice.txt`, and add the no-leak test.
 - **Type:** code
-- **Issue:**
+- **Issue:** #16
 - **Flags:** --reviewers deep --isolation worktree
 - **Produces:** the OOS and INV additions to `src/checklist_care/scoring/score.py`,
   `eval/labels/out_of_sample.json`, `eval/labels/investigate_happiness_hypothesis.json`,

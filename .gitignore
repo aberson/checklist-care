@@ -1,0 +1,23 @@
+# Private data never belongs in this repository (plan §3.6). The real data
+# directory lives outside the checkout; these patterns catch accidents.
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite*
+
+# Web app build output and test reports
+web/dist/
+web/node_modules/
+web/*.tsbuildinfo
+test-results/
+playwright-report/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
