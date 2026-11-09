@@ -118,3 +118,10 @@ def mark_reviewed(conn: sqlite3.Connection, source_id: int, *, mode: str, review
     )
     if cursor.rowcount != 1:
         raise RuntimeError(f"source {source_id} is missing or already reviewed")
+
+
+def all_sources(conn: sqlite3.Connection) -> list[SourceRow]:
+    """Every source, by id (the seeded manual source first)."""
+
+    rows = conn.execute(f"SELECT {_COLUMNS} FROM source ORDER BY id")
+    return [_row(row) for row in rows]

@@ -125,6 +125,43 @@ UNPAIRED_SURROGATE: Final = (
 )
 
 
+# --- tip text rules, shared with the API ----------------------------------------------
+
+
+def text_problem(value: str, limit: tuple[str, int], *, optional: bool = False) -> str | None:
+    """Why ``value`` is not a valid tip text field, or None when it is.
+
+    A tip text (name, action, reason, locator, note, evidence URL) is non-blank, at
+    most ``limit`` characters, given as ``(constant name, value)``, and one line: no
+    line break, tab or control code, and no unpaired surrogate. ``optional`` adds the
+    "use null" hint to the empty-string problem. ``propose`` and the API
+    (``server/routes_tips.py``) both apply exactly these rules.
+    """
+
+    if not value.strip():
+        none_hint = "; use null when there is none" if optional else ""
+        return f"must not be empty{none_hint}"
+    if len(value) > limit[1]:  # first, so the character scan below stays short
+        return f"is {len(value)} characters; {limit[0]} is {limit[1]}; shorten it"
+    if any(unicodedata.category(char) in _LINE_BREAKING for char in value):
+        return "must be one line, without line breaks, tabs or control codes"
+    if _has_surrogate(value):
+        return UNPAIRED_SURROGATE
+    return None
+
+
+def line_problem(name: str, action: str) -> str | None:
+    """Why the printed line ``name — action`` is too long (over ``LINE_MAX``), or None."""
+
+    length = line_length(name, action)
+    if length <= LINE_MAX:
+        return None
+    return (
+        f"the printed line `name{LINE_SEPARATOR}action` is {length} characters; LINE_MAX is "
+        f"{LINE_MAX}; shorten the action (or the name)"
+    )
+
+
 # --- problems ------------------------------------------------------------------------
 
 
@@ -276,17 +313,9 @@ class _Checker:
         if not isinstance(value, str):
             self.add(index, name, "must be a string or null" if optional else "must be a string")
             return None
-        if not value.strip():
-            none_hint = "; use null when there is none" if optional else ""
-            self.add(index, name, f"must not be empty{none_hint}")
-            return None
-        if len(value) > limit[1]:  # first, so the character scan below stays short
-            self.add(
-                index, name, f"is {len(value)} characters; {limit[0]} is {limit[1]}; shorten it"
-            )
-            return None
-        if any(unicodedata.category(char) in _LINE_BREAKING for char in value):
-            self.add(index, name, "must be one line, without line breaks, tabs or control codes")
+        problem = text_problem(value, limit, optional=optional)
+        if problem is not None:
+            self.add(index, name, problem)
             return None
         return value
 
@@ -567,13 +596,10 @@ def _check_tip(
     action = (
         checker.text(obj, index, "action", ("ACTION_MAX", ACTION_MAX)) if "action" in obj else None
     )
-    if name is not None and action is not None and line_length(name, action) > LINE_MAX:
-        checker.add(
-            index,
-            "action",
-            f"the printed line `name{LINE_SEPARATOR}action` is {line_length(name, action)} "
-            f"characters; LINE_MAX is {LINE_MAX}; shorten the action (or the name)",
-        )
+    if name is not None and action is not None:
+        too_long = line_problem(name, action)
+        if too_long is not None:
+            checker.add(index, "action", too_long)
     reason = (
         checker.text(obj, index, "reason", ("REASON_MAX", REASON_MAX)) if "reason" in obj else None
     )

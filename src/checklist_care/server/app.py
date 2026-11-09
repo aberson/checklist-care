@@ -1,7 +1,10 @@
 """``create_app(db_path)``: the FastAPI app behind ``checklist-care serve`` (plan §5, §6).
 
 * ``/api/*`` comes from the ``routes_*`` routers. API errors have the §6 shape
-  ``{"error": {"code": "CC_E_…", "message": "…", "fields": [...]}}``.
+  ``{"error": {"code": "CC_E_…", "message": "…", "fields": [...]}}``: a route raises
+  an ``errors.ApiError`` (400, 404 or 409), and a request FastAPI cannot validate
+  (a wrong type, an unknown field, a broken JSON body) is a 400 ``CC_E_VALIDATION``
+  naming its fields, never FastAPI's own 422.
 * Every other GET path is a file of the built app in ``web/dist``. The requested
   path is checked lexically before any filesystem access (no ``..`` or ``.``
   segment, no empty segment, no absolute path, drive, ``:`` or NUL), then
@@ -28,25 +31,35 @@ from typing import Any, Final
 
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from checklist_care import __version__
-from checklist_care.errors import CODE_CONFLICT, CODE_NOT_FOUND, CODE_VALIDATION
+from checklist_care.errors import API_ERRORS, CODE_NOT_FOUND, CODE_VALIDATION, ApiError
 from checklist_care.server import (
     ALLOWED_HOSTS,
     API_PREFIX,
     BUILD_COMMAND,
     DIST_DIR,
+    routes_lists,
     routes_meta,
+    routes_review,
+    routes_sources,
+    routes_tips,
 )
 from checklist_care.server.database import Database
 
 INDEX_FILE: Final = "index.html"
 
-API_ERROR_CODES: Final = {400: CODE_VALIDATION, 404: CODE_NOT_FOUND, 409: CODE_CONFLICT}
-"""The three API error statuses and their codes (plan §6)."""
+API_ERROR_CODES: Final = {error.status: error.code for error in API_ERRORS}
+"""The three API error statuses and their codes (plan §6), from ``errors.py``."""
+
+ROUTERS: Final = (routes_meta, routes_tips, routes_review, routes_lists, routes_sources)
+"""The modules whose ``router`` serves ``/api``."""
+
+_VALUE_ERROR_PREFIX: Final = "Value error, "
 
 MEDIA_TYPES: Final = {
     ".html": "text/html; charset=utf-8",
@@ -90,6 +103,31 @@ def is_safe_relative_path(path: str) -> bool:
     if not path or "\x00" in path or ":" in path or path.startswith(("/", "\\")):
         return False
     return all(part not in {"", ".", ".."} for part in path.replace("\\", "/").split("/"))
+
+
+def validation_fields(error: RequestValidationError) -> list[str]:
+    """The request fields a validation error names, in order, each once: the first
+    part of each error's location after ``body``, ``query`` or ``path`` (``body``
+    itself when the whole body is wrong)."""
+
+    fields: list[str] = []
+    for item in error.errors():
+        location = [str(part) for part in item.get("loc", ())]
+        name = location[1] if len(location) > 1 else (location[0] if location else "body")
+        if name not in fields:
+            fields.append(name)
+    return fields
+
+
+def validation_message(error: RequestValidationError) -> str:
+    """One line naming each invalid field and why, such as ``name: must not be empty``."""
+
+    parts: list[str] = []
+    for item in error.errors():
+        location = [str(part) for part in item.get("loc", ())][1:] or ["body"]
+        message = str(item.get("msg", "is invalid")).removeprefix(_VALUE_ERROR_PREFIX)
+        parts.append(f"{'.'.join(location)}: {message}")
+    return "; ".join(parts) or "the request is invalid"
 
 
 def build_required_page() -> str:
@@ -142,7 +180,18 @@ def create_app(db_path: Path, *, dist_dir: Path | None = None) -> FastAPI:
     app.state.database = database
     # Outermost: a foreign Host (DNS rebinding) is refused before any route runs.
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(ALLOWED_HOSTS), www_redirect=False)
-    app.include_router(routes_meta.router)
+    for module in ROUTERS:
+        app.include_router(module.router)
+
+    @app.exception_handler(ApiError)
+    async def api_error(_: Request, error: ApiError) -> Response:
+        return error_response(error.status, error.code, error.message, error.fields)
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_error(_: Request, error: RequestValidationError) -> Response:
+        return error_response(
+            400, CODE_VALIDATION, validation_message(error), validation_fields(error)
+        )
 
     @app.exception_handler(StarletteHTTPException)
     async def api_http_error(request: Request, error: StarletteHTTPException) -> Response:

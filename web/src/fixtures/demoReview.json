@@ -1,0 +1,460 @@
+{
+  "meta": {
+    "limits": {
+      "NAME_MAX": 40,
+      "ACTION_MAX": 60,
+      "LINE_SEPARATOR": " — ",
+      "LINE_MAX": 80,
+      "LIST_TITLE_SEPARATOR": " — ",
+      "REASON_MAX": 110,
+      "PRINT_CAPACITY": 48,
+      "TIPS_MAX_EXTRACT": 60,
+      "TIPS_MAX_INVESTIGATE": 300,
+      "LOCATOR_MAX": 200,
+      "NOTE_MAX": 300,
+      "EVIDENCE_URL_MAX": 2048,
+      "PROPOSAL_FILE_MAX_BYTES": 8388608,
+      "SQLITE_INTEGER_MAX": 9223372036854775807,
+      "ID_MAX": 9223372036854775807,
+      "START_S_MAX": 31536000,
+      "AUDIENCE_KIDS_PLUS": "kids+",
+      "AUDIENCE_KIDS": "kids",
+      "AUDIENCE_ADULTS": "adults",
+      "AUDIENCES_TIP": [
+        "kids+",
+        "adults"
+      ],
+      "AUDIENCES_LIST": [
+        "kids",
+        "adults"
+      ],
+      "BUCKET_DAILY": 1,
+      "BUCKET_OCCASIONAL": 2,
+      "BUCKET_OPTIONAL": 3,
+      "BUCKET_LEFT_OUT": 4,
+      "BUCKET_IDS": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "TIP_STATUS_PENDING": "pending",
+      "TIP_STATUS_APPROVED": "approved",
+      "TIP_STATUSES": [
+        "pending",
+        "approved"
+      ],
+      "SOURCE_KIND_YOUTUBE": "youtube",
+      "SOURCE_KIND_WIKI": "wiki",
+      "SOURCE_KIND_TEXT": "text",
+      "SOURCE_KIND_MANUAL": "manual",
+      "SOURCE_KINDS": [
+        "youtube",
+        "wiki",
+        "text",
+        "manual"
+      ],
+      "SOURCE_MODE_EXTRACT": "extract",
+      "SOURCE_MODE_INVESTIGATE": "investigate",
+      "SOURCE_MODE_MANUAL": "manual",
+      "SOURCE_MODES": [
+        "extract",
+        "investigate",
+        "manual"
+      ],
+      "PROPOSAL_MODES": [
+        "extract",
+        "investigate"
+      ],
+      "HOST_CLAUDE_CODE": "claude-code",
+      "HOST_CODEX": "codex",
+      "PROPOSAL_HOSTS": [
+        "claude-code",
+        "codex"
+      ],
+      "TRANSCRIPT_KIND_GENERATED": "generated",
+      "TRANSCRIPT_KIND_MANUAL": "manual",
+      "TRANSCRIPT_KINDS": [
+        "generated",
+        "manual"
+      ]
+    },
+    "buckets": [
+      {
+        "id": 1,
+        "title": "Daily checklist"
+      },
+      {
+        "id": 2,
+        "title": "Occasional activity"
+      },
+      {
+        "id": 3,
+        "title": "Optional / when time allows"
+      },
+      {
+        "id": 4,
+        "title": "Left out"
+      }
+    ],
+    "print_capacity": 48
+  },
+  "sources": [
+    {
+      "id": 1,
+      "kind": "manual",
+      "ref": "manual",
+      "title": "My own tips",
+      "url": null,
+      "mode": "manual",
+      "reviewed_at": null,
+      "tip_counts": {
+        "pending": 0,
+        "approved": 1
+      }
+    },
+    {
+      "id": 2,
+      "kind": "youtube",
+      "ref": "youtube:DEMOearlier",
+      "title": "Demo video: Habits for a calmer week",
+      "url": "https://www.youtube.com/watch?v=DEMOearlier",
+      "mode": "extract",
+      "reviewed_at": "2026-11-08T12:00:00Z",
+      "tip_counts": {
+        "pending": 0,
+        "approved": 3
+      }
+    },
+    {
+      "id": 3,
+      "kind": "youtube",
+      "ref": "youtube:DEMOcalmday",
+      "title": "Demo video: Ten small habits for easier mornings",
+      "url": "https://www.youtube.com/watch?v=DEMOcalmday",
+      "mode": "extract",
+      "reviewed_at": "2026-11-08T12:00:00Z",
+      "tip_counts": {
+        "pending": 7,
+        "approved": 0
+      }
+    },
+    {
+      "id": 4,
+      "kind": "text",
+      "ref": "text:sha256:ab2dcf984ead7e089dae3ea645de4784e9267224ff12f4ac06f16844bcf8ef90",
+      "title": "Demo notes: a talk on school mornings",
+      "url": null,
+      "mode": "extract",
+      "reviewed_at": "2026-11-08T12:00:00Z",
+      "tip_counts": {
+        "pending": 2,
+        "approved": 0
+      }
+    }
+  ],
+  "lists": [
+    {
+      "id": 1,
+      "place": "Adult Bathroom",
+      "audience": "adults",
+      "title": "Adult Bathroom — Adults",
+      "cue": "Morning and bedtime routines: teeth, face, getting ready",
+      "sort_order": 1,
+      "item_count": 2,
+      "over_capacity": false
+    },
+    {
+      "id": 2,
+      "place": "My Office",
+      "audience": "adults",
+      "title": "My Office — Adults",
+      "cue": "Working at the desk or computer",
+      "sort_order": 2,
+      "item_count": 1,
+      "over_capacity": false
+    },
+    {
+      "id": 3,
+      "place": "Kids Bathroom",
+      "audience": "kids",
+      "title": "Kids Bathroom — Kids",
+      "cue": "Kids' morning and bedtime routines",
+      "sort_order": 3,
+      "item_count": 1,
+      "over_capacity": false
+    },
+    {
+      "id": 4,
+      "place": "Kids Bathroom",
+      "audience": "adults",
+      "title": "Kids Bathroom — Adults",
+      "cue": "Helping kids get ready; adults using the kids' bathroom",
+      "sort_order": 4,
+      "item_count": 0,
+      "over_capacity": false
+    },
+    {
+      "id": 5,
+      "place": "Front Door",
+      "audience": "kids",
+      "title": "Front Door — Kids",
+      "cue": "Leaving for school or coming home",
+      "sort_order": 5,
+      "item_count": 3,
+      "over_capacity": false
+    },
+    {
+      "id": 6,
+      "place": "Front Door",
+      "audience": "adults",
+      "title": "Front Door — Adults",
+      "cue": "Leaving the house or coming home",
+      "sort_order": 6,
+      "item_count": 2,
+      "over_capacity": false
+    },
+    {
+      "id": 7,
+      "place": "Coffee Machine",
+      "audience": "adults",
+      "title": "Coffee Machine — Adults",
+      "cue": "First coffee or hot drink of the day",
+      "sort_order": 7,
+      "item_count": 1,
+      "over_capacity": false
+    }
+  ],
+  "tips": [
+    {
+      "id": 5,
+      "name": "Shoes By The Door",
+      "action": "Before bed, line up tomorrow's shoes by the door",
+      "reason": "Hunting for shoes is a classic late-morning scramble; setting them out avoids it.",
+      "bucket": 1,
+      "audience": "kids+",
+      "status": "pending",
+      "source_id": 3,
+      "source_ref": "youtube:DEMOcalmday",
+      "start_s": 30,
+      "start_url": "https://www.youtube.com/watch?v=DEMOcalmday&t=30s",
+      "locator": null,
+      "evidence_url": null,
+      "duplicate_of": null,
+      "duplicate_of_tip": null,
+      "possible_duplicate_of": null,
+      "possible_duplicate_of_tip": null,
+      "note": "daily, under two minutes, due when leaving the house",
+      "list_ids": [
+        5,
+        6
+      ],
+      "created_at": "2026-11-08T12:00:00Z",
+      "updated_at": "2026-11-08T12:00:00Z"
+    },
+    {
+      "id": 6,
+      "name": "Hourly Desk Stretch",
+      "action": "Stand and stretch at the top of every hour",
+      "reason": "Breaking up long sitting eases a stiff back and neck.",
+      "bucket": 1,
+      "audience": "adults",
+      "status": "pending",
+      "source_id": 3,
+      "source_ref": "youtube:DEMOcalmday",
+      "start_s": 95,
+      "start_url": "https://www.youtube.com/watch?v=DEMOcalmday&t=95s",
+      "locator": null,
+      "evidence_url": null,
+      "duplicate_of": null,
+      "duplicate_of_tip": null,
+      "possible_duplicate_of": 3,
+      "possible_duplicate_of_tip": {
+        "id": 3,
+        "name": "Stretch While The Kettle Boils",
+        "action": "Stretch your arms and back as the kettle heats",
+        "bucket": 1,
+        "status": "approved",
+        "source_id": 2
+      },
+      "note": "near match: the same goal as the kettle stretch, at a different cue",
+      "list_ids": [
+        2
+      ],
+      "created_at": "2026-11-08T12:00:00Z",
+      "updated_at": "2026-11-08T12:00:00Z"
+    },
+    {
+      "id": 7,
+      "name": "Hang Up Your Keys",
+      "action": "Put your keys on the hook the moment you get in",
+      "reason": "One home for the keys saves the search when you head out again.",
+      "bucket": 4,
+      "audience": "kids+",
+      "status": "pending",
+      "source_id": 3,
+      "source_ref": "youtube:DEMOcalmday",
+      "start_s": 160,
+      "start_url": "https://www.youtube.com/watch?v=DEMOcalmday&t=160s",
+      "locator": null,
+      "evidence_url": null,
+      "duplicate_of": 2,
+      "duplicate_of_tip": {
+        "id": 2,
+        "name": "Keys On The Hook",
+        "action": "Hang your keys on the hook as you walk in",
+        "bucket": 1,
+        "status": "approved",
+        "source_id": 2
+      },
+      "possible_duplicate_of": null,
+      "possible_duplicate_of_tip": null,
+      "note": "duplicate: the same action at the same cue as Keys On The Hook",
+      "list_ids": [],
+      "created_at": "2026-11-08T12:00:00Z",
+      "updated_at": "2026-11-08T12:00:00Z"
+    },
+    {
+      "id": 8,
+      "name": "Phone Sleeps Outside",
+      "action": "Charge your phone outside the bedroom at night",
+      "reason": "With the phone out of reach it is easier to put it down and fall asleep.",
+      "bucket": 1,
+      "audience": "adults",
+      "status": "pending",
+      "source_id": 3,
+      "source_ref": "youtube:DEMOcalmday",
+      "start_s": 232,
+      "start_url": "https://www.youtube.com/watch?v=DEMOcalmday&t=232s",
+      "locator": null,
+      "evidence_url": null,
+      "duplicate_of": null,
+      "duplicate_of_tip": null,
+      "possible_duplicate_of": null,
+      "possible_duplicate_of_tip": null,
+      "note": "daily, due at the bedtime routine",
+      "list_ids": [
+        1
+      ],
+      "created_at": "2026-11-08T12:00:00Z",
+      "updated_at": "2026-11-08T12:00:00Z"
+    },
+    {
+      "id": 9,
+      "name": "Sunday Dinner Plan",
+      "action": "Plan the week's dinners on Sunday afternoon",
+      "reason": "Deciding meals once a week saves a nightly decision and extra shop trips.",
+      "bucket": 2,
+      "audience": "adults",
+      "status": "pending",
+      "source_id": 3,
+      "source_ref": "youtube:DEMOcalmday",
+      "start_s": 301,
+      "start_url": "https://www.youtube.com/watch?v=DEMOcalmday&t=301s",
+      "locator": null,
+      "evidence_url": null,
+      "duplicate_of": null,
+      "duplicate_of_tip": null,
+      "possible_duplicate_of": null,
+      "possible_duplicate_of_tip": null,
+      "note": "a weekly planning session",
+      "list_ids": [],
+      "created_at": "2026-11-08T12:00:00Z",
+      "updated_at": "2026-11-08T12:00:00Z"
+    },
+    {
+      "id": 10,
+      "name": "Tidy The Desk Cables",
+      "action": "Bundle the cables under your desk once",
+      "reason": "A tidy desk is nice to have, but it is a one-time setup, not a habit.",
+      "bucket": 3,
+      "audience": "adults",
+      "status": "pending",
+      "source_id": 3,
+      "source_ref": "youtube:DEMOcalmday",
+      "start_s": 377,
+      "start_url": "https://www.youtube.com/watch?v=DEMOcalmday&t=377s",
+      "locator": null,
+      "evidence_url": null,
+      "duplicate_of": null,
+      "duplicate_of_tip": null,
+      "possible_duplicate_of": null,
+      "possible_duplicate_of_tip": null,
+      "note": "one-time setup",
+      "list_ids": [],
+      "created_at": "2026-11-08T12:00:00Z",
+      "updated_at": "2026-11-08T12:00:00Z"
+    },
+    {
+      "id": 11,
+      "name": "Read The Router Manual",
+      "action": "Read your internet router's manual cover to cover",
+      "reason": "Rarely useful; the quick-start card covers what most homes need.",
+      "bucket": 4,
+      "audience": "adults",
+      "status": "pending",
+      "source_id": 3,
+      "source_ref": "youtube:DEMOcalmday",
+      "start_s": 446,
+      "start_url": "https://www.youtube.com/watch?v=DEMOcalmday&t=446s",
+      "locator": null,
+      "evidence_url": null,
+      "duplicate_of": null,
+      "duplicate_of_tip": null,
+      "possible_duplicate_of": null,
+      "possible_duplicate_of_tip": null,
+      "note": "left out: not worth the time",
+      "list_ids": [],
+      "created_at": "2026-11-08T12:00:00Z",
+      "updated_at": "2026-11-08T12:00:00Z"
+    },
+    {
+      "id": 12,
+      "name": "Water Bottle In The Bag",
+      "action": "Pack a filled water bottle in the school bag",
+      "reason": "A bottle packed the night before means no thirsty afternoons at school.",
+      "bucket": 1,
+      "audience": "kids+",
+      "status": "pending",
+      "source_id": 4,
+      "source_ref": "text:sha256:ab2dcf984ead7e089dae3ea645de4784e9267224ff12f4ac06f16844bcf8ef90",
+      "start_s": null,
+      "start_url": null,
+      "locator": null,
+      "evidence_url": null,
+      "duplicate_of": null,
+      "duplicate_of_tip": null,
+      "possible_duplicate_of": null,
+      "possible_duplicate_of_tip": null,
+      "note": "daily, due when leaving for school",
+      "list_ids": [
+        5
+      ],
+      "created_at": "2026-11-08T12:00:00Z",
+      "updated_at": "2026-11-08T12:00:00Z"
+    },
+    {
+      "id": 13,
+      "name": "Library Trip Together",
+      "action": "Visit the library together once a month",
+      "reason": "A regular library visit keeps new books coming without buying them.",
+      "bucket": 2,
+      "audience": "kids+",
+      "status": "pending",
+      "source_id": 4,
+      "source_ref": "text:sha256:ab2dcf984ead7e089dae3ea645de4784e9267224ff12f4ac06f16844bcf8ef90",
+      "start_s": null,
+      "start_url": null,
+      "locator": null,
+      "evidence_url": null,
+      "duplicate_of": null,
+      "duplicate_of_tip": null,
+      "possible_duplicate_of": null,
+      "possible_duplicate_of_tip": null,
+      "note": "a monthly outing",
+      "list_ids": [],
+      "created_at": "2026-11-08T12:00:00Z",
+      "updated_at": "2026-11-08T12:00:00Z"
+    }
+  ]
+}

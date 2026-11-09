@@ -3,32 +3,9 @@ import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiGet } from "./api";
 import { App } from "./App";
-import type { Meta } from "./meta";
 import { forgetMeta, loadMeta } from "./meta";
 import { DEFAULT_PAGE, NAV, parseRoute } from "./router";
-
-const META: Meta = {
-  version: "0.1.0",
-  limits: {
-    NAME_MAX: 40,
-    ACTION_MAX: 60,
-    LINE_MAX: 80,
-    LINE_SEPARATOR: " — ",
-    REASON_MAX: 110,
-    PRINT_CAPACITY: 48,
-    AUDIENCES_TIP: ["kids+", "adults"],
-    AUDIENCES_LIST: ["kids", "adults"],
-    BUCKET_IDS: [1, 2, 3, 4],
-    TIP_STATUSES: ["pending", "approved"],
-  },
-  buckets: [
-    { id: 1, title: "Daily checklist" },
-    { id: 2, title: "Occasional activity" },
-    { id: 3, title: "Optional / when time allows" },
-    { id: 4, title: "Left out" },
-  ],
-  print_capacity: 48,
-};
+import { demoRoutes, get, META, stubApi } from "./testing/api";
 
 function stubFetch(status: number, body: unknown) {
   const fetchMock = vi.fn((_url: string, _init?: RequestInit) =>
@@ -62,7 +39,7 @@ afterEach(() => {
 
 describe("App", () => {
   it("renders the nav with Review, Library, Lists and Buckets as hash links", async () => {
-    stubFetch(200, META);
+    stubApi(...demoRoutes());
     render(<App />);
     const nav = screen.getByRole("navigation", { name: "Main" });
     const links = within(nav).getAllByRole("link");
@@ -79,7 +56,7 @@ describe("App", () => {
   });
 
   it("follows the hash to each page and marks it current", async () => {
-    stubFetch(200, META);
+    stubApi(...demoRoutes());
     render(<App />);
     const nav = screen.getByRole("navigation", { name: "Main" });
     for (const [hash, heading, label] of [
@@ -98,7 +75,7 @@ describe("App", () => {
   });
 
   it("shows the bucket titles from /api/meta, fetched once", async () => {
-    const fetchMock = stubFetch(200, META);
+    const sent = stubApi(...demoRoutes());
     window.location.hash = "#/buckets";
     render(<App />);
     const list = await screen.findByRole("list", { name: "Buckets" });
@@ -108,12 +85,13 @@ describe("App", () => {
     await goTo("#/review");
     await goTo("#/buckets");
     await screen.findByRole("list", { name: "Buckets" });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/meta");
+    // The review inbox loads its own data; /api/meta is fetched once for the whole app.
+    expect(sent.filter((request) => request.url === "/api/meta")).toHaveLength(1);
+    expect(sent[0]?.url).toBe("/api/meta");
   });
 
   it("shows an unknown hash as not found, with a link to the review inbox", async () => {
-    stubFetch(200, META);
+    stubApi(...demoRoutes());
     window.location.hash = "#/nowhere";
     render(<App />);
     expect(screen.getByRole("heading", { name: "Page not found" })).toBeTruthy();
@@ -125,7 +103,13 @@ describe("App", () => {
   });
 
   it("shows an alert when /api/meta fails", async () => {
-    stubFetch(404, { error: { code: "CC_E_NOT_FOUND", message: "no API route /api/meta", fields: [] } });
+    stubApi(
+      get("/api/meta", {
+        status: 404,
+        body: { error: { code: "CC_E_NOT_FOUND", message: "no API route /api/meta", fields: [] } },
+      }),
+      ...demoRoutes(),
+    );
     render(<App />);
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("no API route /api/meta");

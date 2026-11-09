@@ -1298,6 +1298,7 @@ module called from production code is exercised through its caller: the CLI subc
     badge.
   - The full gate is green.
 - **Depends on:** 5
+- **Status:** DONE (2026-11-08)
 
 <!-- autofix-applied: 2026-11-08 -->
 ### Step 7: A4 print sheets

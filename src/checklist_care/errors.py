@@ -132,3 +132,45 @@ class EvalAbortError(CheckError):
 
     code = CODE_EVAL_ABORT
     exit_code = EXIT_EVAL_ABORT
+
+
+# --- HTTP API errors (plan §6) ---------------------------------------------------------
+
+
+class ApiError(Exception):
+    """An expected API failure: an HTTP status, its stable code, a message and the
+    request fields at fault. ``server/app.py`` turns it into the §6 error body
+    ``{"error": {"code", "message", "fields"}}``."""
+
+    status: ClassVar[int] = 400
+    code: ClassVar[str] = CODE_VALIDATION
+
+    def __init__(self, message: str, fields: Sequence[str] = ()) -> None:
+        super().__init__(message)
+        self.message = message
+        self.fields = tuple(fields)
+
+
+class ApiValidationError(ApiError):
+    """HTTP 400: the request is malformed or breaks a rule (``CC_E_VALIDATION``)."""
+
+    status = 400
+    code = CODE_VALIDATION
+
+
+class ApiNotFoundError(ApiError):
+    """HTTP 404: a named tip, list or source does not exist (``CC_E_NOT_FOUND``)."""
+
+    status = 404
+    code = CODE_NOT_FOUND
+
+
+class ApiConflictError(ApiError):
+    """HTTP 409: an explicitly requested placement is incompatible (``CC_E_CONFLICT``)."""
+
+    status = 409
+    code = CODE_CONFLICT
+
+
+API_ERRORS: Final = (ApiValidationError, ApiNotFoundError, ApiConflictError)
+"""The three API error statuses (plan §6), each with its code."""

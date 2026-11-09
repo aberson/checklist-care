@@ -112,3 +112,19 @@ def test_rejection_message_is_one_bounded_line() -> None:
 
 def test_watch_url_is_canonical() -> None:
     assert youtube.watch_url(VIDEO) == f"https://www.youtube.com/watch?v={VIDEO}"
+
+
+def test_start_url_opens_the_video_at_the_tip() -> None:
+    ref = youtube.source_ref(VIDEO)
+    assert youtube.start_url(ref, 377) == f"https://www.youtube.com/watch?v={VIDEO}&t=377s"
+    assert youtube.start_url(ref, 0) == f"{youtube.watch_url(VIDEO)}&t=0s"
+    # The URL a fetched id parses back from is the same video.
+    assert youtube.parse_video_id(youtube.start_url(ref, 60) or "") == VIDEO
+
+
+@pytest.mark.parametrize(
+    "ref",
+    ["manual", "wiki:en:The_Happiness_Hypothesis", "text:sha256:" + "0" * 64, "youtube:short"],
+)
+def test_start_url_is_none_for_other_refs(ref: str) -> None:
+    assert youtube.start_url(ref, 30) is None

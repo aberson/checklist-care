@@ -132,6 +132,17 @@ def watch_url(video_id: str) -> str:
     return WATCH_URL.format(video_id=video_id)
 
 
+def start_url(ref: str, start_s: int) -> str | None:
+    """The watch URL of source ``ref`` that starts playing at ``start_s`` seconds,
+    ``https://www.youtube.com/watch?v=<id>&t=<start_s>s`` (plan §5, the review
+    inbox's timestamp link); None when ``ref`` is not a ``youtube:<id>`` ref."""
+
+    kind, _, video_id = ref.partition(":")
+    if kind != SOURCE_KIND_YOUTUBE or not VIDEO_ID_PATTERN.fullmatch(video_id):
+        return None
+    return f"{watch_url(video_id)}&t={start_s}s"
+
+
 # --- transcript seam -----------------------------------------------------------------
 
 

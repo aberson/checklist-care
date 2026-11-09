@@ -14,8 +14,16 @@ export interface MetaLimits {
   PRINT_CAPACITY: number;
   AUDIENCES_TIP: readonly string[];
   AUDIENCES_LIST: readonly string[];
+  AUDIENCE_KIDS: string;
+  AUDIENCE_KIDS_PLUS: string;
   BUCKET_IDS: readonly number[];
+  BUCKET_DAILY: number;
+  BUCKET_LEFT_OUT: number;
   TIP_STATUSES: readonly string[];
+  SOURCE_KIND_YOUTUBE: string;
+  SOURCE_KIND_WIKI: string;
+  SOURCE_KIND_TEXT: string;
+  SOURCE_KIND_MANUAL: string;
 }
 
 export interface BucketTitle {

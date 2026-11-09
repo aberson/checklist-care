@@ -46,3 +46,24 @@ export async function apiGet<T>(path: string): Promise<T> {
   if (!response.ok) throw await errorFrom(response);
   return (await response.json()) as T;
 }
+
+/**
+ * Send `method` to `/api<path>` with `body` as JSON and return the response's JSON body, or
+ * `undefined` for 204 No Content; a non-2xx status throws {@link ApiError}.
+ */
+export async function apiSend<T>(method: "POST" | "PATCH" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
+  const init: RequestInit = { method, headers: { Accept: "application/json" } };
+  if (body !== undefined) {
+    init.headers = { Accept: "application/json", "Content-Type": "application/json" };
+    init.body = JSON.stringify(body);
+  }
+  const response = await fetch(`${API_PREFIX}${path}`, init);
+  if (!response.ok) throw await errorFrom(response);
+  if (response.status === 204) return undefined as T;
+  return (await response.json()) as T;
+}
+
+/** The message to show for a failed call: the API's own message when there is one. */
+export function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

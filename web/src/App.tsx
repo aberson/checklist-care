@@ -13,7 +13,7 @@ import { href, NAV, useHashRoute } from "./router";
 function Page({ page, meta }: { page: PageName; meta: Meta | null }) {
   switch (page) {
     case "review":
-      return <ReviewPage />;
+      return <ReviewPage meta={meta} />;
     case "library":
       return <LibraryPage />;
     case "lists":
