@@ -139,3 +139,37 @@ The plan is written; there is no code yet. Next come `/plan-review`, `/plan-redl
 - Playwright Chromium for the print tests, installed once:
   `npx --yes playwright@1.63.0 install chromium`.
 - Private data stays outside the repo. Never commit packets, transcripts, DB files or backups.
+
+## Codex usage
+
+Codex finds `checklist-ingest` in `.agents/skills` with no install step. Its default
+`workspace-write` sandbox blocks network access and writes outside the checkout, and the skill
+needs both. Start Codex inside the checkout with this launch line (PowerShell):
+
+```powershell
+codex --add-dir "<data dir>" --add-dir "$env:LOCALAPPDATA\uv" -c sandbox_workspace_write.network_access=true --search
+```
+
+- `<data dir>` is the private data directory: the `data_dir` that `uv run checklist-care status`
+  prints. It is `$env:CHECKLIST_CARE_DATA_DIR` when that is set, else
+  `$env:LOCALAPPDATA\checklist-care`. The skill writes its draft proposals there, and the CLI
+  writes the packets and the DB.
+- `--add-dir "$env:LOCALAPPDATA\uv"` lets every `uv run` write uv's cache.
+- `-c sandbox_workspace_write.network_access=true` lets `checklist-care fetch` reach YouTube and
+  Wikipedia.
+- `--search` turns on live web search, which the Wikipedia book investigation uses. Without it,
+  that investigation runs degraded.
+
+With the default data directory the line is:
+
+```powershell
+codex --add-dir "$env:LOCALAPPDATA\checklist-care" --add-dir "$env:LOCALAPPDATA\uv" -c sandbox_workspace_write.network_access=true --search
+```
+
+Then ask: "Use the checklist-ingest skill on <youtube-url>". Start a fresh Codex session for each
+source, so duplicates are found through `checklist-care context`, not through chat memory.
+
+`--add-dir`, `-c` and `--search` are in codex-cli 0.147.0's `--help` (checked 2026-11-08). The
+`sandbox_workspace_write.network_access` key is not verified yet: manual step M3 confirms it,
+seen as no approval prompt for the network or for writes to the data dir. If M3 finds that a
+different line is needed, record the working line here.
