@@ -30,6 +30,8 @@ from checklist_care.errors import (
     one_line,
 )
 from checklist_care.limits import BUCKET_IDS, TIP_STATUS_PENDING
+from checklist_care.sources import packet, youtube
+from checklist_care.store import sources as source_store
 
 Handler = Callable[[argparse.Namespace, paths.DataDir], int]
 
@@ -91,6 +93,18 @@ def build_parser() -> argparse.ArgumentParser:
         "backup", parents=[common], help="write a consistent copy of the database"
     )
     backup.set_defaults(handler=_cmd_backup)
+
+    fetch = commands.add_parser(
+        "fetch",
+        parents=[common],
+        help="fetch a source into a packet under <data-dir>/packets/",
+        description=(
+            "Fetch a YouTube video's transcript and chapters into a source packet. "
+            "Put the URL in single quotes in a shell."
+        ),
+    )
+    fetch.add_argument("url", metavar="URL", help="a YouTube video URL or its 11-character id")
+    fetch.set_defaults(handler=_cmd_fetch)
     return parser
 
 
@@ -195,6 +209,42 @@ def _cmd_backup(args: argparse.Namespace, data_dir: paths.DataDir) -> int:
     with closing(connection.connect(data_dir.db_path)) as conn:
         conn.execute("VACUUM INTO ?", (str(target),))
     _out(f"backup: {target}")
+    return EXIT_OK
+
+
+def _cmd_fetch(args: argparse.Namespace, data_dir: paths.DataDir) -> int:
+    video_id = youtube.parse_video_id(args.url)
+    ref = youtube.source_ref(video_id)
+    _require_database(data_dir)
+    paths.ensure_layout(data_dir.path)
+    target = packet.packet_path(data_dir.path, ref)
+    with closing(connection.connect(data_dir.db_path)) as conn:
+        # Refuse a reviewed source before any network call, and again under the
+        # write lock in case `propose` reviewed it while the fetch ran.
+        source_store.refuse_reviewed(conn, ref)
+        fetched_at = connection.format_timestamp(connection.utc_now())
+        fetched = youtube.fetch_packet(video_id, fetched_at=fetched_at)
+        # The packet goes into place as the transaction's last step, and a failed
+        # COMMIT puts the old one back, so packet and source row change together.
+        with packet.PacketSwap(target, fetched) as swap:
+            with connection.transaction(conn):
+                source_store.refuse_reviewed(conn, ref)
+                source_store.upsert_fetched(
+                    conn,
+                    kind=fetched.kind,
+                    ref=ref,
+                    title=fetched.title,
+                    url=fetched.url,
+                    revision=youtube.revision(fetched),
+                    fetched_at=fetched_at,
+                )
+                swap.install()
+    for warning in fetched.warnings:
+        _err(f"warning: {warning}")
+    _out(f"packet: {target}")
+    _out(f"source_ref: {ref}")
+    _out(f"packet_sha256: {packet.file_sha256(target)}")
+    _out(f"counts: {fetched.counts()}")
     return EXIT_OK
 
 

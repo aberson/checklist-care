@@ -63,6 +63,13 @@ SOURCE_MODE_INVESTIGATE: Final = "investigate"
 SOURCE_MODE_MANUAL: Final = "manual"
 SOURCE_MODES: Final = (SOURCE_MODE_EXTRACT, SOURCE_MODE_INVESTIGATE, SOURCE_MODE_MANUAL)
 
+TRANSCRIPT_KIND_GENERATED: Final = "generated"
+TRANSCRIPT_KIND_MANUAL: Final = "manual"
+TRANSCRIPT_KINDS: Final = (TRANSCRIPT_KIND_GENERATED, TRANSCRIPT_KIND_MANUAL)
+"""A YouTube packet's ``transcript.kind`` (plan §4.4), also the first half of the
+``source.revision`` ``<kind>:<language_code>``. ``manual`` here is a hand-made
+caption track, unrelated to the manual source kind."""
+
 
 def line_length(name: str, action: str) -> int:
     """Length of the printed ``name — action`` line, compared with ``LINE_MAX``."""

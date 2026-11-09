@@ -1153,6 +1153,7 @@ module called from production code is exercised through its caller: the CLI subc
   - The live test exists and is marked.
   - The full Python gate is green.
 - **Depends on:** 1
+- **Status:** DONE (2026-11-08)
 
 <!-- autofix-applied: 2026-11-08 -->
 ### Step 3: Skill contract — context out, proposals in

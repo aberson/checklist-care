@@ -102,8 +102,12 @@ def test_seeds_use_only_enum_values() -> None:
 # status counts' "pending") and the manual source's ref, which is spelled like its kind.
 
 _PACKAGE = Path(limits.__file__).parent
+# Enums that no CHECK constraint spells out are guarded the same way.
+_EXTRA_ENUMS = ("TRANSCRIPT_KINDS",)
 _ENUM_STRINGS = frozenset(
-    value for constant in EXPECTED_SCHEMA_ENUMS.values() for value in getattr(limits, constant)
+    value
+    for constant in (*EXPECTED_SCHEMA_ENUMS.values(), *_EXTRA_ENUMS)
+    for value in getattr(limits, constant)
 )
 _EXEMPT_ASSIGNMENTS = frozenset({"MANUAL_SOURCE_REF"})
 
@@ -153,9 +157,17 @@ def test_restated_enum_literal_detector_flags_literals() -> None:
             "conn.execute(\"SELECT count(*) FROM tip WHERE status = 'pending'\")",
             'payload = {"pending": counts["pending"]}',
             'MANUAL_SOURCE_REF = "manual"',
+            'kind = "generated" if is_generated else other',
         ]
     )
     assert _restated_enum_literals(restated) == [
         "line 1: 'kids'",
         "line 2: \"SELECT count(*) FROM tip WHERE status = 'pending'\"",
+        "line 5: 'generated'",
     ]
+
+
+def test_transcript_kinds() -> None:
+    assert limits.TRANSCRIPT_KINDS == ("generated", "manual")
+    assert limits.TRANSCRIPT_KIND_GENERATED is limits.TRANSCRIPT_KINDS[0]
+    assert limits.TRANSCRIPT_KIND_MANUAL is limits.TRANSCRIPT_KINDS[1]
