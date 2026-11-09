@@ -22,6 +22,10 @@ LINE_SEPARATOR: Final = " — "
 LINE_MAX: Final = 80
 """``len(name) + len(LINE_SEPARATOR) + len(action)``: one 12pt Arial line."""
 
+LIST_TITLE_SEPARATOR: Final = LINE_SEPARATOR
+"""Joins a list's place and audience in its display title, ``Coffee Machine — Adults``
+(plan §3.2); the same dash as a printed line."""
+
 REASON_MAX: Final = 110
 """One plain-language sentence."""
 
@@ -31,6 +35,40 @@ PRINT_CAPACITY: Final = 48
 TIPS_MAX_EXTRACT: Final = 60
 TIPS_MAX_INVESTIGATE: Final = 300
 """Proposal size caps per mode. Zero tips is allowed."""
+
+# Caps on the optional free-text tip fields and on the proposal file. Plan §4.2
+# states none; these bound what an untrusted proposal can store, well above
+# what a real tip needs.
+
+LOCATOR_MAX: Final = 200
+"""A tip's ``locator``: the original chapter title or wiki section heading."""
+
+NOTE_MAX: Final = 300
+"""A tip's ``note``: the skill's short remark on the bucket or a duplicate."""
+
+EVIDENCE_URL_MAX: Final = 2048
+"""A tip's ``evidence_url``: the http(s) page the tip came from."""
+
+PROPOSAL_FILE_MAX_BYTES: Final = 8 * 1024 * 1024
+"""The largest proposal file ``propose`` reads. A proposal of ``TIPS_MAX_INVESTIGATE``
+tips with every text field at its limit, every character written as a ``\\uXXXX``
+escape, stays below it."""
+
+# Bounds on the whole numbers of a proposal. JSON numbers have no size limit, and a
+# Python int above SQLITE_INTEGER_MAX makes SQLite raise OverflowError, so every
+# integer field is bounded here and reported as a field-level problem instead.
+# (``bucket`` is bounded by BUCKET_IDS and the tip count by tips_max().)
+
+SQLITE_INTEGER_MAX: Final = 2**63 - 1
+"""The largest value a SQLite INTEGER column stores."""
+
+ID_MAX: Final = SQLITE_INTEGER_MAX
+"""The largest row id a proposal may name: ``list_ids``, ``duplicate_of`` and
+``possible_duplicate_of``. A larger number cannot name a row."""
+
+START_S_MAX: Final = 365 * 24 * 60 * 60
+"""The largest ``start_s``, one year in seconds, whether or not the packet has a
+``duration_s``. No video runs that long; with a duration the bound is ``duration_s``."""
 
 # Each enum is a tuple built from its named members, so code that needs one
 # value names the member instead of restating its spelling.
@@ -63,6 +101,14 @@ SOURCE_MODE_INVESTIGATE: Final = "investigate"
 SOURCE_MODE_MANUAL: Final = "manual"
 SOURCE_MODES: Final = (SOURCE_MODE_EXTRACT, SOURCE_MODE_INVESTIGATE, SOURCE_MODE_MANUAL)
 
+PROPOSAL_MODES: Final = (SOURCE_MODE_EXTRACT, SOURCE_MODE_INVESTIGATE)
+"""A proposal's ``mode`` (plan §4.5); ``propose`` stores it as ``source.mode``."""
+
+HOST_CLAUDE_CODE: Final = "claude-code"
+HOST_CODEX: Final = "codex"
+PROPOSAL_HOSTS: Final = (HOST_CLAUDE_CODE, HOST_CODEX)
+"""A proposal's ``host``: the agent host that ran the skill (plan §4.5)."""
+
 TRANSCRIPT_KIND_GENERATED: Final = "generated"
 TRANSCRIPT_KIND_MANUAL: Final = "manual"
 TRANSCRIPT_KINDS: Final = (TRANSCRIPT_KIND_GENERATED, TRANSCRIPT_KIND_MANUAL)
@@ -75,3 +121,13 @@ def line_length(name: str, action: str) -> int:
     """Length of the printed ``name — action`` line, compared with ``LINE_MAX``."""
 
     return len(name) + len(LINE_SEPARATOR) + len(action)
+
+
+def tips_max(mode: str) -> int:
+    """The proposal size cap of a mode: ``TIPS_MAX_EXTRACT`` or ``TIPS_MAX_INVESTIGATE``."""
+
+    if mode == SOURCE_MODE_INVESTIGATE:
+        return TIPS_MAX_INVESTIGATE
+    if mode == SOURCE_MODE_EXTRACT:
+        return TIPS_MAX_EXTRACT
+    raise ValueError(f"{mode!r} is not a proposal mode")

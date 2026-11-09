@@ -1189,6 +1189,7 @@ module called from production code is exercised through its caller: the CLI subc
   - Re-proposing a reviewed source exits 3.
   - The full Python gate is green.
 - **Depends on:** 2
+- **Status:** DONE (2026-11-08)
 
 <!-- autofix-applied: 2026-11-08 -->
 ### Step 4: The checklist-ingest skill (YouTube)

@@ -25,6 +25,17 @@ def test_limit_values_match_the_plan() -> None:
     assert limits.TIPS_MAX_INVESTIGATE == 300
 
 
+def test_the_integer_bounds_fit_sqlite_integer() -> None:
+    # SQLITE_INTEGER_MAX is SQLite's own limit: it is stored, and one more overflows.
+    with closing(sqlite3.connect(":memory:")) as conn:
+        conn.execute("CREATE TABLE t (n INTEGER)")
+        conn.execute("INSERT INTO t VALUES (?)", (limits.SQLITE_INTEGER_MAX,))
+        with pytest.raises(OverflowError):
+            conn.execute("INSERT INTO t VALUES (?)", (limits.SQLITE_INTEGER_MAX + 1,))
+    assert limits.ID_MAX <= limits.SQLITE_INTEGER_MAX
+    assert 0 < limits.START_S_MAX <= limits.SQLITE_INTEGER_MAX
+
+
 def test_line_length_counts_name_separator_and_action() -> None:
     assert limits.LINE_SEPARATOR == " — "
     assert limits.line_length("Drink Water", "Drink a glass") == 11 + 3 + 13
@@ -103,7 +114,7 @@ def test_seeds_use_only_enum_values() -> None:
 
 _PACKAGE = Path(limits.__file__).parent
 # Enums that no CHECK constraint spells out are guarded the same way.
-_EXTRA_ENUMS = ("TRANSCRIPT_KINDS",)
+_EXTRA_ENUMS = ("TRANSCRIPT_KINDS", "PROPOSAL_HOSTS")
 _ENUM_STRINGS = frozenset(
     value
     for constant in (*EXPECTED_SCHEMA_ENUMS.values(), *_EXTRA_ENUMS)
@@ -171,3 +182,18 @@ def test_transcript_kinds() -> None:
     assert limits.TRANSCRIPT_KINDS == ("generated", "manual")
     assert limits.TRANSCRIPT_KIND_GENERATED is limits.TRANSCRIPT_KINDS[0]
     assert limits.TRANSCRIPT_KIND_MANUAL is limits.TRANSCRIPT_KINDS[1]
+
+
+def test_proposal_enums() -> None:
+    assert limits.PROPOSAL_HOSTS == ("claude-code", "codex")
+    assert limits.PROPOSAL_MODES == ("extract", "investigate")
+    assert limits.PROPOSAL_MODES[0] is limits.SOURCE_MODE_EXTRACT
+    assert limits.PROPOSAL_MODES[1] is limits.SOURCE_MODE_INVESTIGATE
+    assert set(limits.PROPOSAL_MODES) < set(limits.SOURCE_MODES)
+
+
+def test_tips_max_per_mode() -> None:
+    assert limits.tips_max(limits.SOURCE_MODE_EXTRACT) == limits.TIPS_MAX_EXTRACT
+    assert limits.tips_max(limits.SOURCE_MODE_INVESTIGATE) == limits.TIPS_MAX_INVESTIGATE
+    with pytest.raises(ValueError):
+        limits.tips_max(limits.SOURCE_MODE_MANUAL)

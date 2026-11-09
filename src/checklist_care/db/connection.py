@@ -96,6 +96,19 @@ def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
     conn.execute("COMMIT")
 
 
+@contextmanager
+def snapshot(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
+    """One read transaction (``BEGIN``, deferred): every query inside it sees the
+    same committed state, and no write lock is taken."""
+
+    conn.execute("BEGIN")
+    try:
+        yield conn
+    finally:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+
+
 def connect(path: Path) -> sqlite3.Connection:
     """Open the database at ``path``, applying the pragmas and the schema.
 

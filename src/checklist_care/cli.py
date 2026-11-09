@@ -17,9 +17,11 @@ import sys
 import traceback
 from collections.abc import Callable, Sequence
 from contextlib import closing
+from pathlib import Path
 from typing import Any
 
-from checklist_care import __version__, paths
+from checklist_care import __version__, paths, proposal
+from checklist_care import context as context_module
 from checklist_care.db import connection, seed
 from checklist_care.errors import (
     CODE_INTERNAL,
@@ -27,6 +29,7 @@ from checklist_care.errors import (
     EXIT_OK,
     CheckError,
     ConfigError,
+    ProposalInvalidError,
     one_line,
 )
 from checklist_care.limits import BUCKET_IDS, TIP_STATUS_PENDING
@@ -105,6 +108,36 @@ def build_parser() -> argparse.ArgumentParser:
     )
     fetch.add_argument("url", metavar="URL", help="a YouTube video URL or its 11-character id")
     fetch.set_defaults(handler=_cmd_fetch)
+
+    context = commands.add_parser(
+        "context",
+        parents=[common],
+        help="print what the skill needs to propose, as one JSON object",
+        description=(
+            f"Print one {context_module.CONTEXT_SCHEMA} JSON object: the skill fingerprint, "
+            "the text limits, the bucket rubrics, the lists and their cues, and the stored "
+            "tips; with --source-ref, also that source's packet hash, duration and chapters."
+        ),
+    )
+    context.add_argument(
+        "--source-ref",
+        metavar="REF",
+        help="the source_ref that `checklist-care fetch` printed, such as youtube:<id>",
+    )
+    context.set_defaults(handler=_cmd_context)
+
+    propose = commands.add_parser(
+        "propose",
+        parents=[common],
+        help="validate a proposal file and import its tips as pending",
+        description=(
+            f"Validate a {proposal.PROPOSAL_SCHEMA} JSON file (UTF-8) and import its tips "
+            "as pending, all in one transaction. Any problem exits 5, prints a JSON list "
+            "of {index, field, problem} on stdout and writes nothing."
+        ),
+    )
+    propose.add_argument("file", metavar="FILE", help="the proposal JSON file")
+    propose.set_defaults(handler=_cmd_propose)
     return parser
 
 
@@ -245,6 +278,27 @@ def _cmd_fetch(args: argparse.Namespace, data_dir: paths.DataDir) -> int:
     _out(f"source_ref: {ref}")
     _out(f"packet_sha256: {packet.file_sha256(target)}")
     _out(f"counts: {fetched.counts()}")
+    return EXIT_OK
+
+
+def _cmd_context(args: argparse.Namespace, data_dir: paths.DataDir) -> int:
+    _require_database(data_dir)
+    with closing(connection.connect(data_dir.db_path)) as conn:
+        payload = context_module.build_context(conn, data_dir.path, args.source_ref)
+    _out(json.dumps(payload, ensure_ascii=False, indent=2))
+    return EXIT_OK
+
+
+def _cmd_propose(args: argparse.Namespace, data_dir: paths.DataDir) -> int:
+    _require_database(data_dir)
+    with closing(connection.connect(data_dir.db_path)) as conn:
+        try:
+            result = proposal.submit(conn, data_dir.path, Path(args.file))
+        except ProposalInvalidError as rejected:
+            _out(rejected.problems_json())
+            raise
+    for line in result.summary_lines():
+        _out(line)
     return EXIT_OK
 
 

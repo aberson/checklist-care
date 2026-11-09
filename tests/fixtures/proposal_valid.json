@@ -1,0 +1,162 @@
+{
+  "schema": "checklist-care.proposal/1",
+  "source_ref": "youtube:LpeDuC2sQ-w",
+  "packet_sha256": "bfc9a629be682563ecdab03c254f6ff94d8e6a7744e4cd1e7fc9daae628d292f",
+  "skill_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "host": "claude-code",
+  "model": "synthetic-fixture",
+  "mode": "extract",
+  "degraded": false,
+  "tips": [
+    {
+      "name": "The Accountability Text",
+      "action": "Text one friend the habit you are starting this week",
+      "reason": "Telling someone who will ask about it makes a new habit easier to keep going.",
+      "bucket": 2,
+      "audience": "adults",
+      "list_ids": [],
+      "start_s": 0,
+      "locator": null,
+      "evidence_url": null,
+      "duplicate_of": null,
+      "possible_duplicate_of": null,
+      "note": "takes real effort; a weekly practice"
+    },
+    {
+      "name": "Your Alarm Is Lying To You",
+      "action": "Keep one fixed wake-up time, even at weekends",
+      "reason": "A steady wake-up time is a reasonable habit, but it is a setup, not a daily step.",
+      "bucket": 3,
+      "audience": "adults",
+      "list_ids": [],
+      "start_s": 60,
+      "locator": null,
+      "evidence_url": null,
+      "duplicate_of": null,
+      "possible_duplicate_of": null,
+      "note": "general principle without one daily action"
+    },
+    {
+      "name": "Make Laziness Your Superpower",
+      "action": "Make the good choice the easiest one to reach",
+      "reason": "Sound in spirit, but too general to tick off on a printed list.",
+      "bucket": 4,
+      "audience": "adults",
+      "list_ids": [],
+      "start_s": 112,
+      "locator": null,
+      "evidence_url": null,
+      "duplicate_of": null,
+      "possible_duplicate_of": null,
+      "note": "left out: no single action to take"
+    },
+    {
+      "name": "Step Into Morning Daylight",
+      "action": "Get a few minutes of daylight on the way out",
+      "reason": "Daylight early in the day helps set the body clock; never look straight at the sun.",
+      "bucket": 1,
+      "audience": "kids+",
+      "list_ids": [
+        5,
+        6
+      ],
+      "start_s": 170,
+      "locator": "The Sunlight Stare",
+      "evidence_url": null,
+      "duplicate_of": null,
+      "possible_duplicate_of": null,
+      "note": "renamed: the title reads as an instruction to stare at the sun"
+    },
+    {
+      "name": "Sit Up Straight, You're Not Dead Yet",
+      "action": "Roll your shoulders back and sit tall",
+      "reason": "A quick posture reset eases the neck and back during long sitting.",
+      "bucket": 1,
+      "audience": "kids+",
+      "list_ids": [
+        2
+      ],
+      "start_s": 218,
+      "locator": null,
+      "evidence_url": null,
+      "duplicate_of": null,
+      "possible_duplicate_of": null,
+      "note": "daily, a few seconds, due at the desk"
+    },
+    {
+      "name": "The Golden Rule of Habit-Building",
+      "action": "Start new habits small enough to never skip",
+      "reason": "Tiny starts are easier to repeat; it is a principle rather than one daily action.",
+      "bucket": 3,
+      "audience": "adults",
+      "list_ids": [],
+      "start_s": 276,
+      "locator": null,
+      "evidence_url": null,
+      "duplicate_of": null,
+      "possible_duplicate_of": null,
+      "note": "principle"
+    },
+    {
+      "name": "Fire Your Morning Brain",
+      "action": "Splash cold water on your face after brushing",
+      "reason": "A short cold splash is an easy wake-up cue tied to a routine you already have.",
+      "bucket": 1,
+      "audience": "adults",
+      "list_ids": [
+        1
+      ],
+      "start_s": 332,
+      "locator": null,
+      "evidence_url": null,
+      "duplicate_of": null,
+      "possible_duplicate_of": null,
+      "note": "daily, under a minute, due in the bathroom"
+    },
+    {
+      "name": "The Two-Minute Brain Trick",
+      "action": "Do the first two minutes of a task you are avoiding",
+      "reason": "Starting is the hardest part, and two minutes is small enough to begin.",
+      "bucket": 1,
+      "audience": "adults",
+      "list_ids": [],
+      "start_s": 389,
+      "locator": null,
+      "evidence_url": null,
+      "duplicate_of": null,
+      "possible_duplicate_of": null,
+      "note": "daily, but tied to no single place"
+    },
+    {
+      "name": "Unfollow Your Ghosts",
+      "action": "Unfollow accounts that leave you feeling worse",
+      "reason": "A periodic tidy of your feeds removes things that drag your mood down.",
+      "bucket": 2,
+      "audience": "adults",
+      "list_ids": [],
+      "start_s": 443,
+      "locator": null,
+      "evidence_url": null,
+      "duplicate_of": null,
+      "possible_duplicate_of": null,
+      "note": "a monthly review that takes some time"
+    },
+    {
+      "name": "Your Brain Is A Raisin",
+      "action": "Drink a glass of water before anything else",
+      "reason": "Starting the day with water is a two-second habit that is easy to attach to a cue.",
+      "bucket": 1,
+      "audience": "kids+",
+      "list_ids": [
+        3,
+        7
+      ],
+      "start_s": 503,
+      "locator": null,
+      "evidence_url": null,
+      "duplicate_of": null,
+      "possible_duplicate_of": null,
+      "note": "daily, due at the first drink of the day"
+    }
+  ]
+}

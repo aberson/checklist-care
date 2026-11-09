@@ -2,7 +2,8 @@
 
 Reads take any connection. :func:`upsert_fetched` writes, and its caller runs it
 inside ``connection.transaction`` together with the packet write, so the
-"already reviewed" check and the upsert see the same row.
+"already reviewed" check and the upsert see the same row. :func:`mark_reviewed`
+is the proposal import's write, inside that import's one transaction.
 """
 
 from __future__ import annotations
@@ -100,3 +101,20 @@ def upsert_fetched(
     if row is None:  # pragma: no cover - the statement above inserts or keeps the row
         raise RuntimeError(f"source {ref} vanished during its upsert")
     return row
+
+
+def mark_reviewed(conn: sqlite3.Connection, source_id: int, *, mode: str, reviewed_at: str) -> None:
+    """Store the source as reviewed in ``mode`` ("stored as reviewed", plan §4.5).
+
+    Only an unreviewed row changes; the caller holds the transaction and refused
+    a reviewed source first, so finding none to update is a bug.
+    """
+
+    if not conn.in_transaction:
+        raise RuntimeError("mark_reviewed must run inside connection.transaction()")
+    cursor = conn.execute(
+        "UPDATE source SET reviewed_at = ?, mode = ? WHERE id = ? AND reviewed_at IS NULL",
+        (reviewed_at, mode, source_id),
+    )
+    if cursor.rowcount != 1:
+        raise RuntimeError(f"source {source_id} is missing or already reviewed")

@@ -7,7 +7,10 @@ Every expected failure is a :class:`CheckError` subclass. ``cli.main`` prints
 
 from __future__ import annotations
 
-from typing import ClassVar, Final
+import json
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Any, ClassVar, Final
 
 EXIT_OK: Final = 0
 EXIT_EVAL_FAIL: Final = 1
@@ -86,6 +89,42 @@ class ProposalError(CheckError):
 
     code = CODE_PROPOSAL
     exit_code = EXIT_PROPOSAL
+
+
+@dataclass(frozen=True)
+class Problem:
+    """One field-level problem of a proposal, carried by :class:`ProposalInvalidError`."""
+
+    index: int | None
+    """The tip's position in ``tips``, or None for the file or the envelope."""
+    field: str
+    problem: str
+
+    def to_json(self) -> dict[str, Any]:
+        return {"index": self.index, "field": self.field, "problem": self.problem}
+
+
+class ProposalInvalidError(ProposalError):
+    """The proposal failed decoding or validation; nothing was written (exit 5).
+
+    ``propose`` prints :meth:`problems_json` on stdout and :meth:`line` on stderr.
+    """
+
+    def __init__(self, problems: Sequence[Problem]) -> None:
+        self.problems = tuple(problems)
+        count = len(self.problems)
+        super().__init__(
+            f"the proposal has {count} problem{'' if count == 1 else 's'}, listed on stdout "
+            "as JSON [{index, field, problem}]; nothing was written. Fix exactly those "
+            "fields and submit again"
+        )
+
+    def problems_json(self) -> str:
+        """The problems as the JSON list ``propose`` prints on stdout."""
+
+        return json.dumps(
+            [problem.to_json() for problem in self.problems], ensure_ascii=False, indent=2
+        )
 
 
 class EvalAbortError(CheckError):
