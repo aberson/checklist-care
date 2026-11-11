@@ -1492,6 +1492,7 @@ module called from production code is exercised through its caller: the CLI subc
   - The Step 4 contract tests stay green for the new core text.
   - The full Python gate is green.
 - **Depends on:** 4
+- **Status:** DONE (2026-11-11)
 
 <!-- autofix-applied: 2026-11-08 -->
 ### Step 13: Wikipedia sources

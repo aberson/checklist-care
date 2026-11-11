@@ -23,9 +23,9 @@ are one line: no line breaks, tabs or control characters.
 | `bucket` | `1`, `2`, `3` or `4`. See **Buckets** |
 | `audience` | `"kids+"` or `"adults"`. See **Audience** |
 | `list_ids` | Ids from `context.lists`. Always `[]` outside bucket 1. See **Placement** |
-| `start_s` | Whole seconds into the video: the chapter's `start_s` for a chaptered video, else the second the advice starts. Below `duration_s` |
+| `start_s` | Whole seconds into the video: the chapter's `start_s` for a chaptered video, else the second the advice starts. Below `duration_s`. `null` for a text |
 | `locator` | The original chapter title when you renamed it, else `null` |
-| `evidence_url` | `null` for a YouTube source |
+| `evidence_url` | `null` for a YouTube or text source |
 | `duplicate_of` | The id of the stored tip this one repeats, else `null`. Only in bucket 4. See **Duplicates** |
 | `possible_duplicate_of` | The id of a stored near match, else `null` |
 | `note` | A short remark: why this bucket, these lists, or this duplicate mark |
@@ -101,8 +101,8 @@ that are not themselves duplicates, the rejected ideas.)
   - "Staring At The Sun" → "Morning Daylight, Five Minutes" (unsafe read literally)
   - "Skipping Breakfast" → "Eat A Real Breakfast" (names a harm)
 - A chapter title longer than `NAME_MAX` is shortened to fit, with the original in `locator`.
-- **Other sources** (a video without chapters): write the name yourself: short, catchy, in Title
-  Case.
+- **Other sources** (a video without chapters, or a text): write the name yourself: short,
+  catchy, in Title Case.
 - **Action:** always states the healthy behavior, even when the title names the harm. For
   "Skipping Breakfast" the action is "Eat something with protein before you leave the house", not
   anything about skipping.

@@ -24,8 +24,12 @@ nothing fails instead of passing.
 
 from __future__ import annotations
 
+import codecs
 import json
 import re
+import shutil
+import subprocess
+import sys
 from collections.abc import Iterable
 from contextlib import closing
 from datetime import UTC, datetime
@@ -35,7 +39,7 @@ from typing import Any
 import pytest
 from youtube_transcript_api import FetchedTranscript, FetchedTranscriptSnippet
 
-from checklist_care import cli, context, errors, limits, paths, proposal
+from checklist_care import cli, context, errors, limits, paths, processes, proposal
 from checklist_care.db import connection
 from checklist_care.sources import youtube
 
@@ -427,6 +431,212 @@ def test_every_fetch_example_in_the_core_single_quotes_its_argument() -> None:
     assert fetch_examples(text)  # the core does show how to run fetch
     assert unquoted_fetch_examples(text) == []
     assert unquoted_fetch_examples(read(CONTRACT)) == []
+
+
+# --- quote characters inside single quotes: file paths and titles ---------------------
+# A `'` in a title such as "Bob's tips" ends the single quotes early: PowerShell then
+# fails to parse the line, and Git Bash runs the rest of the title as a command. The core
+# states the escapes as a table; these tests pin the table, every `--title` instruction,
+# and, in the real shells, that the escapes deliver a hostile title as one argument.
+
+POSIX_ESCAPES = {"'": "'\\''"}
+"""Git Bash (any POSIX sh): end the quotes, an escaped `'`, reopen them."""
+
+POWERSHELL_ESCAPES = {
+    "'": "''",
+    "‘": "‘‘",
+    "’": "’’",
+    "‚": "‚‚",
+    "‛": "‛‛",
+    '"': '\\"',
+}
+"""PowerShell: a doubled single quote, typographic ones included, since PowerShell ends
+single quotes at those too; ``\\"`` for a ``"``, which Windows PowerShell otherwise
+drops from the argument it passes to a native command."""
+
+TITLE_ESCAPE_SPANS = ("`'\\''`", "`''`", '`\\"`', "`‘`", "`’`", "`‚`", "`‛`")
+"""What every ``--title`` instruction in the core must name: both shells' escapes."""
+
+QUOTING_TABLE_ROW = re.compile(r"^\s*\|(.*)\|\s*$")
+
+
+def single_quoted(value: str, escapes: dict[str, str]) -> str:
+    return "'" + "".join(escapes.get(char, char) for char in value) + "'"
+
+
+def quoting_table(text: str) -> list[tuple[str, ...]]:
+    """The data rows of the first table in the ``Ground rules`` section, as cells."""
+
+    rows: list[tuple[str, ...]] = []
+    for line in sections(text).get("Ground rules", "").split("\n"):
+        match = QUOTING_TABLE_ROW.match(line)
+        if match is None:
+            if rows:
+                break
+            continue
+        rows.append(tuple(cell.strip() for cell in match[1].split("|")))
+    # Drop the header row and the |---| separator row.
+    return [row for row in rows[2:] if not set("".join(row)) <= {"-", ":"}]
+
+
+def expected_quoting_table() -> list[tuple[str, ...]]:
+    return [
+        (f"`{char}`", f"`{POSIX_ESCAPES.get(char, char)}`", f"`{escaped}`")
+        for char, escaped in POWERSHELL_ESCAPES.items()
+    ]
+
+
+def title_paragraphs(text: str) -> list[str]:
+    """Every blank-line-separated block of ``text`` that mentions ``--title``."""
+
+    return [block for block in re.split(r"\n\s*\n", text) if "--title" in block]
+
+
+def missing_title_escapes(paragraph: str) -> list[str]:
+    return [span for span in TITLE_ESCAPE_SPANS if span not in paragraph]
+
+
+def test_the_quoting_checks_flag_missing_rules() -> None:
+    sample = (
+        "## Ground rules\n\n- Quote it.\n\n  | Character | Git Bash | PowerShell |\n"
+        "  |---|---|---|\n  | `'` | `'\\''` | `''` |\n\n## 1. Next\n\n| `x` | `y` | `z` |\n\n"
+        "Add `--title '<title>'` when there is one.\n\nNo flag here.\n"
+    )
+    assert quoting_table(sample) == [("`'`", "`'\\''`", "`''`")]
+    assert quoting_table(sample) != expected_quoting_table()
+    assert title_paragraphs(sample) == ["Add `--title '<title>'` when there is one."]
+    assert missing_title_escapes(title_paragraphs(sample)[0]) == list(TITLE_ESCAPE_SPANS)
+
+
+def test_the_ground_rules_give_the_quoting_table_for_paths_and_titles() -> None:
+    text = read(CORE)
+    rule = collapsed(sections(text)["Ground rules"])
+    assert "Always put a URL, a file path or a title in single quotes" in rule
+    assert "percent-encode any `'` as `%27`" in rule
+    assert quoting_table(text) == expected_quoting_table()
+
+
+def test_every_title_instruction_in_the_core_names_the_escapes() -> None:
+    paragraphs = title_paragraphs(read(CORE))
+    assert paragraphs  # the core does say when to pass --title
+    assert {paragraph: missing_title_escapes(paragraph) for paragraph in paragraphs} == {
+        paragraph: [] for paragraph in paragraphs
+    }
+    # And the title goes last, so nothing a title might swallow follows it.
+    assert any(
+        "`uv run checklist-care fetch --text-file '<inbox file>' --title '<title>'`" in p
+        for p in paragraphs
+    )
+
+
+HOSTILE_TITLE = (
+    "Bob's ‘morning’ ‚list‛ x'; echo INJECTED; ' \"quoted\" $HOME `id` & | ; % ^ ~ \\ end"
+)
+"""Every character of the quoting table, a command injection and other shell syntax."""
+
+INJECTION_ANCHOR = "x'; echo INJECTED; echo '"
+"""Passed unescaped, so each harness run shows it does see an injection."""
+
+ARGV_ECHO = "import json, sys\nprint('ARGV ' + json.dumps(sys.argv[1:]))\n"
+SHELL_TIMEOUT_S = 60
+
+
+def round_trip_script(tmp_path: Path, escapes: dict[str, str], call: str = "") -> str:
+    """Run the echo program once with the escaped hostile title, then once with the
+    unescaped anchor, with an ``ANCHOR`` line between the two."""
+
+    echo = tmp_path / "argv_echo.py"
+    echo.write_bytes(ARGV_ECHO.encode("utf-8"))
+    command = (
+        f"{call}{single_quoted(sys.executable, escapes)} "
+        f"{single_quoted(str(echo), escapes)} --title "
+    )
+    return (
+        f"{command}{single_quoted(HOSTILE_TITLE, escapes)}\n"
+        "echo ANCHOR\n"
+        f"{command}'{INJECTION_ANCHOR}'\n"
+    )
+
+
+def assert_round_trip(stdout: str) -> None:
+    escaped, separator, unescaped = stdout.partition("ANCHOR")
+    assert separator, stdout
+    lines = [line.strip() for line in escaped.splitlines() if line.strip()]
+    assert lines == ["ARGV " + json.dumps(["--title", HOSTILE_TITLE])]
+    assert "INJECTED" in [line.strip() for line in unescaped.splitlines()], unescaped
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="no POSIX sh (Git Bash) on PATH")
+def test_the_git_bash_escape_passes_a_hostile_title_as_one_argument(tmp_path: Path) -> None:
+    sh = shutil.which("sh")
+    assert sh is not None
+    script = round_trip_script(tmp_path, POSIX_ESCAPES)
+
+    child = subprocess.run(
+        [sh],
+        input=script.encode("utf-8"),
+        capture_output=True,
+        creationflags=processes.NO_WINDOW,
+        timeout=SHELL_TIMEOUT_S,
+        check=False,
+    )
+
+    assert_round_trip(child.stdout.decode("utf-8", errors="replace"))
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32" or shutil.which("powershell") is None,
+    reason="Windows PowerShell only",
+)
+def test_the_powershell_escapes_pass_a_hostile_title_as_one_argument(tmp_path: Path) -> None:
+    powershell = shutil.which("powershell")
+    assert powershell is not None
+    script = tmp_path / "round_trip.ps1"
+    # With a byte-order mark: Windows PowerShell reads a .ps1 without one as ANSI, which
+    # would turn the typographic quotes into other characters and test nothing.
+    script.write_bytes(
+        codecs.BOM_UTF8 + round_trip_script(tmp_path, POWERSHELL_ESCAPES, "& ").encode("utf-8")
+    )
+
+    child = subprocess.run(
+        [powershell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass"]
+        + ["-File", str(script)],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        creationflags=processes.NO_WINDOW,
+        timeout=SHELL_TIMEOUT_S,
+        check=False,
+    )
+
+    assert_round_trip(child.stdout.decode("utf-8", errors="replace"))
+
+
+# --- the text branches: an input file is copied unread, only inbox files are fetched --
+
+
+def test_the_core_fetches_only_inbox_files_and_never_opens_a_named_file() -> None:
+    core = read(CORE)
+    assert "**An input file the operator names is never opened either.**" in core
+    fetch_step = collapsed(sections(core)["3. Fetch the source"])
+    for needed in (
+        "The inbox is `<data_dir>/inbox/`",
+        "`Copy-Item -LiteralPath '<file>' -Destination '<inbox copy>'`",
+        "`cp '<file>' '<inbox copy>'`",
+        "Never open, print or search the original.",
+        "Run `uv run checklist-care fetch --text-file '<inbox copy>'`.",
+        "to a new inbox file as UTF-8",
+        "Run `uv run checklist-care fetch --text-file '<inbox file>'`.",
+    ):
+        assert needed in fetch_step, needed
+    # Every --text-file the core passes is an inbox file, never the operator's original.
+    text_files = {
+        tokens[tokens.index("--text-file") + 1]
+        for tokens in (TOKEN.findall(rest) for rest in fetch_examples(core))
+        if "--text-file" in tokens
+    }
+    assert text_files == {"'<inbox copy>'", "'<inbox file>'"}
+    # The Claude adapter keeps its file reader off the operator's file.
+    assert "Never use it on an input file the operator names" in collapsed(read(CLAUDE_ADAPTER))
 
 
 # --- the contract's example proposal --------------------------------------------------

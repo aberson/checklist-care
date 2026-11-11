@@ -35,9 +35,12 @@ from checklist_care.errors import (
 from checklist_care.limits import BUCKET_IDS, TIP_STATUS_PENDING
 from checklist_care.server import DAILY_PORT, HOST
 from checklist_care.sources import packet, youtube
+from checklist_care.sources import text as text_source
 from checklist_care.store import sources as source_store
 
 Handler = Callable[[argparse.Namespace, paths.DataDir], int]
+UsageCheck = Callable[[argparse.Namespace], None]
+"""A subcommand's check of a rule between its arguments; it calls ``parser.error``."""
 
 
 def _use_utf8(stream: Any, errors: str) -> None:
@@ -103,12 +106,31 @@ def build_parser() -> argparse.ArgumentParser:
         parents=[common],
         help="fetch a source into a packet under <data-dir>/packets/",
         description=(
-            "Fetch a YouTube video's transcript and chapters into a source packet. "
-            "Put the URL in single quotes in a shell."
+            "Fetch a YouTube video's transcript and chapters, or the text of a text file, "
+            "into a source packet. Put the URL in single quotes in a shell; a file path too."
         ),
     )
-    fetch.add_argument("url", metavar="URL", help="a YouTube video URL or its 11-character id")
-    fetch.set_defaults(handler=_cmd_fetch)
+    source = fetch.add_mutually_exclusive_group(required=True)
+    source.add_argument(
+        "url", metavar="URL", nargs="?", help="a YouTube video URL or its 11-character id"
+    )
+    source.add_argument(
+        "--text-file",
+        action=_StoreOnce,
+        metavar="PATH",
+        help=(
+            "a text file to fetch instead of a URL: UTF-8 (else read as Windows-1252), "
+            f"at most {text_source.TEXT_CHARS_MAX:,} characters"
+        ),
+    )
+    fetch.add_argument(
+        "--title",
+        action=_StoreOnce,
+        type=_title,
+        metavar="TITLE",
+        help="the text's title, stored with the source (only with --text-file)",
+    )
+    fetch.set_defaults(handler=_cmd_fetch, usage_check=_fetch_usage_check(fetch))
 
     context = commands.add_parser(
         "context",
@@ -179,6 +201,41 @@ def _port(text: str) -> int:
     return value
 
 
+class _StoreOnce(argparse.Action):
+    """Store an option's value, but refuse the option a second time. Plain ``store``
+    keeps the last value, so a title that a shell quoting slip splits into several
+    arguments could carry a second ``--text-file`` that wins. No ``fetch`` option is
+    meant to be repeated, so a repeat is a usage error (exit 2)."""
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: str | Sequence[Any] | None,
+        option_string: str | None = None,
+    ) -> None:
+        if getattr(namespace, self.dest, None) is not None:
+            parser.error(f"argument {option_string}: given more than once")
+        setattr(namespace, self.dest, values)
+
+
+def _title(text: str) -> str:
+    try:
+        return text_source.clean_title(text)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(f"{error}; give one line of text") from None
+
+
+def _fetch_usage_check(fetch: argparse.ArgumentParser) -> UsageCheck:
+    """The ``fetch`` rule argparse cannot state: ``--title`` needs ``--text-file``."""
+
+    def check(args: argparse.Namespace) -> None:
+        if args.title is not None and args.text_file is None:
+            fetch.error("argument --title: only allowed with --text-file")
+
+    return check
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run one command and return its exit code."""
 
@@ -187,6 +244,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     try:
         args = parser.parse_args(argv)
+        usage_check: UsageCheck | None = getattr(args, "usage_check", None)
+        if usage_check is not None:
+            usage_check(args)
     except SystemExit as exit_request:  # --help, --version and usage errors
         code = exit_request.code
         return code if isinstance(code, int) else (EXIT_OK if code is None else 2)
@@ -284,8 +344,35 @@ def _cmd_backup(args: argparse.Namespace, data_dir: paths.DataDir) -> int:
 
 
 def _cmd_fetch(args: argparse.Namespace, data_dir: paths.DataDir) -> int:
+    if args.text_file is not None:
+        # The file is read and checked first: its ref is the hash of its text.
+        text = text_source.read_text_file(Path(args.text_file))
+        title: str | None = args.title
+
+        def make_text_packet(fetched_at: str) -> packet.Packet:
+            return text_source.build_packet(text, title=title, fetched_at=fetched_at)
+
+        return _fetch_source(data_dir, text.ref, make_text_packet, text_source.revision)
+
     video_id = youtube.parse_video_id(args.url)
-    ref = youtube.source_ref(video_id)
+
+    def make_video_packet(fetched_at: str) -> packet.Packet:
+        return youtube.fetch_packet(video_id, fetched_at=fetched_at)
+
+    return _fetch_source(
+        data_dir, youtube.source_ref(video_id), make_video_packet, youtube.revision
+    )
+
+
+def _fetch_source(
+    data_dir: paths.DataDir,
+    ref: str,
+    make_packet: Callable[[str], packet.Packet],
+    revision: Callable[[packet.Packet], str | None],
+) -> int:
+    """Fetch source ``ref`` with ``make_packet(fetched_at)``, then write its packet and
+    upsert its row together, and print the four ``fetch`` lines (plan §4.4)."""
+
     _require_database(data_dir)
     paths.ensure_layout(data_dir.path)
     target = packet.packet_path(data_dir.path, ref)
@@ -294,7 +381,7 @@ def _cmd_fetch(args: argparse.Namespace, data_dir: paths.DataDir) -> int:
         # write lock in case `propose` reviewed it while the fetch ran.
         source_store.refuse_reviewed(conn, ref)
         fetched_at = connection.format_timestamp(connection.utc_now())
-        fetched = youtube.fetch_packet(video_id, fetched_at=fetched_at)
+        fetched = make_packet(fetched_at)
         # The packet goes into place as the transaction's last step, and a failed
         # COMMIT puts the old one back, so packet and source row change together.
         with packet.PacketSwap(target, fetched) as swap:
@@ -306,7 +393,7 @@ def _cmd_fetch(args: argparse.Namespace, data_dir: paths.DataDir) -> int:
                     ref=ref,
                     title=fetched.title,
                     url=fetched.url,
-                    revision=youtube.revision(fetched),
+                    revision=revision(fetched),
                     fetched_at=fetched_at,
                 )
                 swap.install()

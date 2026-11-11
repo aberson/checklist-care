@@ -28,7 +28,6 @@ are made up, so their links open YouTube's "video unavailable" page.
 
 from __future__ import annotations
 
-import hashlib
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass, field
@@ -57,6 +56,7 @@ from checklist_care.limits import (
     TIP_STATUS_PENDING,
     TRANSCRIPT_KIND_GENERATED,
 )
+from checklist_care.sources import text as text_source
 from checklist_care.sources import youtube
 from checklist_care.store import lists as list_store
 from checklist_care.store import sources as source_store
@@ -214,9 +214,10 @@ DEMO_CAPACITY_TEXT: Final = (
 
 
 def text_ref(text: str) -> str:
-    """The ref of a pasted-text source: ``text:sha256:<hex of the UTF-8 text>``."""
+    """The ref of a pasted-text source, from the producer ``fetch --text-file`` uses:
+    ``text:sha256:<hex of the normalized UTF-8 text>``."""
 
-    return f"{SOURCE_KIND_TEXT}:sha256:{hashlib.sha256(text.encode('utf-8')).hexdigest()}"
+    return text_source.source_ref(text)
 
 
 def capacity_tips(lines: tuple[tuple[str, str], ...] = CAPACITY_LINES) -> tuple[DemoTip, ...]:
