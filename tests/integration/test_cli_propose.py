@@ -6,26 +6,36 @@ titles and timings, synthetic transcript text), then ``context`` and ``propose``
 Proposals start from ``tests/fixtures/proposal_valid.json``; its ``skill_sha256``
 is a placeholder, always replaced by the value ``context`` printed, because the
 real fingerprint changes with every edit to the skill files.
+
+Investigate mode (plan §4.5, Step 14) runs the same path on a Wikipedia article:
+``fetch`` of the article URL with ``wiki.urlopen`` answering from
+``tests/fixtures/packet_wiki_synthetic.json`` (11 "Ch.N" headings, synthetic text),
+then ``propose`` of ``tests/fixtures/proposal_investigate.json`` (120 cited tips).
 """
 
 from __future__ import annotations
 
+import copy
 import hashlib
+import io
 import json
 import sqlite3
 from collections.abc import Callable, Iterable
 from contextlib import closing
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from email.message import Message
 from pathlib import Path
 from typing import Any
+from urllib.request import Request
+from urllib.response import addinfourl
 
 import pytest
 from youtube_transcript_api import FetchedTranscript, FetchedTranscriptSnippet
 
 from checklist_care import cli, context, limits, paths, proposal
 from checklist_care.db import connection, seed
-from checklist_care.sources import youtube
+from checklist_care.sources import wiki, youtube
 from checklist_care.store import sources as source_store
 from checklist_care.store import tips as tip_store
 
@@ -171,18 +181,18 @@ def proposal_from(ctx: dict[str, Any]) -> dict[str, Any]:
     return document
 
 
-def draft_path(data_dir: Path) -> Path:
-    return data_dir / "proposals" / f"draft-{paths.source_key(REF)}.json"
+def draft_path(data_dir: Path, ref: str = REF) -> Path:
+    return data_dir / "proposals" / f"draft-{paths.source_key(ref)}.json"
 
 
 def archive_file(data_dir: Path, ref: str = REF) -> Path:
     return data_dir / "proposals" / f"{paths.source_key(ref)}.1.json"
 
 
-def write_draft(data_dir: Path, document: Any, *, encoding: str = "utf-8") -> Path:
+def write_draft(data_dir: Path, document: Any, *, encoding: str = "utf-8", ref: str = REF) -> Path:
     """Write the draft where the skill writes it: ``proposals/draft-<source-key>.json``."""
 
-    target = draft_path(data_dir)
+    target = draft_path(data_dir, ref)
     target.write_bytes(json.dumps(document, ensure_ascii=False, indent=2).encode(encoding))
     return target
 
@@ -1104,3 +1114,416 @@ def test_both_subcommands_are_in_the_help(capsys: pytest.CaptureFixture[str]) ->
     code, out, _ = run(capsys, "propose", "--help")
     assert code == 0
     assert "FILE" in out
+
+
+# --- investigate mode: a Wikipedia article (Step 14) --------------------------------------
+
+WIKI_PACKET_FIXTURE = FIXTURES / "packet_wiki_synthetic.json"
+INVESTIGATE_FIXTURE = FIXTURES / "proposal_investigate.json"
+WIKI_REF = "wiki:en:The_Happiness_Hypothesis"
+ARTICLE = "https://en.wikipedia.org/wiki/The_Happiness_Hypothesis"
+API = "https://en.wikipedia.org/w/api.php?"
+HEADING_ONE = "Ch.1: Placeholder idea one"
+
+
+def wiki_fixture_packet() -> dict[str, Any]:
+    payload: dict[str, Any] = json.loads(WIKI_PACKET_FIXTURE.read_bytes().decode("utf-8"))
+    return payload
+
+
+def fixture_investigation() -> dict[str, Any]:
+    payload: dict[str, Any] = json.loads(INVESTIGATE_FIXTURE.read_bytes().decode("utf-8"))
+    return payload
+
+
+@dataclass
+class FakeArticleApi:
+    """``wiki.urlopen``: the Action API's formatversion=2 answer for the fixture article."""
+
+    extract: str = field(default_factory=lambda: str(wiki_fixture_packet()["text"]))
+    requests: list[str] = field(default_factory=list)
+
+    def __call__(self, request: Request, timeout: float | None = None) -> addinfourl:
+        self.requests.append(request.full_url)
+        assert request.full_url.startswith(API), request.full_url
+        packet = wiki_fixture_packet()
+        page = {
+            "pageid": 1001,
+            "ns": 0,
+            "title": packet["title"],
+            "lastrevid": 1300000001,
+            "canonicalurl": packet["url"],
+            "extract": self.extract,
+        }
+        body = json.dumps({"batchcomplete": True, "query": {"pages": [page]}}).encode("utf-8")
+        return addinfourl(io.BytesIO(body), Message(), request.full_url, 200)
+
+
+@pytest.fixture
+def article_api(monkeypatch: pytest.MonkeyPatch) -> FakeArticleApi:
+    fake = FakeArticleApi()
+    monkeypatch.setattr(wiki, "urlopen", fake)
+    return fake
+
+
+def fetch_article(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> Path:
+    """``init`` and ``fetch`` of the article URL in a new data dir, through ``cli.main``."""
+
+    target = tmp_path / "wiki-data"
+    code, _, err = run(capsys, "--data-dir", str(target), "init")
+    assert code == 0, err
+    code, out, err = run(capsys, "--data-dir", str(target), "fetch", ARTICLE)
+    assert code == 0, err
+    assert f"source_ref: {WIKI_REF}" in out.splitlines()
+    return target
+
+
+@pytest.fixture
+def wiki_data_dir(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], article_api: FakeArticleApi
+) -> Path:
+    """A data dir after ``fetch`` of the article: the packet is the fixture, byte for byte."""
+
+    target = fetch_article(capsys, tmp_path)
+    packet_file = target / "packets" / f"{paths.source_key(WIKI_REF)}.json"
+    assert packet_file.read_bytes() == WIKI_PACKET_FIXTURE.read_bytes()
+    return target
+
+
+def investigation_from(ctx: dict[str, Any]) -> dict[str, Any]:
+    """The 120-tip fixture investigation with the fingerprints ``context`` printed."""
+
+    document = fixture_investigation()
+    assert document["packet_sha256"] == ctx["source"]["packet_sha256"]  # the fixture is coherent
+    document["skill_sha256"] = ctx["skill_sha256"]
+    return document
+
+
+def write_investigation(data_dir: Path, document: dict[str, Any]) -> Path:
+    return write_draft(data_dir, document, ref=WIKI_REF)
+
+
+def wiki_tips(data_dir: Path) -> list[dict[str, Any]]:
+    return query(
+        data_dir,
+        "SELECT tip.* FROM tip JOIN source ON source.id = tip.source_id "
+        "WHERE source.ref = ? ORDER BY tip.id",
+        WIKI_REF,
+    )
+
+
+def bucket_counts(tips: Iterable[dict[str, Any]]) -> list[int]:
+    buckets = [tip["bucket"] for tip in tips]
+    return [buckets.count(bucket) for bucket in limits.BUCKET_IDS]
+
+
+def test_the_investigate_fixture_cites_every_chapter_heading() -> None:
+    """The fixture is a known-good investigation (plan §4.8 INV-2 to INV-4): every "Ch.N"
+    heading has tips, every tip cites an http(s) page, most pages are not Wikipedia."""
+
+    document = fixture_investigation()
+    headings = [section["heading"] for section in wiki_fixture_packet()["sections"]]
+    chapters = [heading for heading in headings if heading.startswith("Ch.")]
+    assert len(chapters) == 11
+    assert document["source_ref"] == WIKI_REF
+    assert document["mode"] == limits.SOURCE_MODE_INVESTIGATE
+    assert document["degraded"] is False
+    assert document["packet_sha256"] == sha256_of(WIKI_PACKET_FIXTURE)
+    tips = document["tips"]
+    assert len(tips) == 120
+    assert {tip["locator"] for tip in tips} == set(chapters)
+    assert all(tip["evidence_url"].startswith("https://") for tip in tips)
+    elsewhere = [tip for tip in tips if tip["evidence_url"] != ARTICLE]
+    assert len(elsewhere) * 2 >= len(tips)
+    assert 0 not in bucket_counts(tips)  # every bucket is exercised
+
+
+def test_an_investigation_with_120_cited_tips_is_imported(
+    capsys: pytest.CaptureFixture[str], wiki_data_dir: Path, article_api: FakeArticleApi
+) -> None:
+    ctx = get_context(capsys, wiki_data_dir, WIKI_REF)
+    assert ctx["source"]["kind"] == limits.SOURCE_KIND_WIKI
+    assert ctx["source"]["section_headings"] == [
+        section["heading"] for section in wiki_fixture_packet()["sections"]
+    ]
+    document = investigation_from(ctx)
+    draft = write_investigation(wiki_data_dir, document)
+
+    code, out, err = propose(capsys, wiki_data_dir, draft)
+
+    assert code == 0, out
+    assert err == [f"data_dir: {wiki_data_dir}"]
+    lines = out.splitlines()
+    assert lines[:4] == [
+        f"proposal: {archive_file(wiki_data_dir, WIKI_REF)}",
+        f"source_ref: {WIKI_REF}",
+        f"mode: {limits.SOURCE_MODE_INVESTIGATE}",
+        tips_line(*bucket_counts(document["tips"])),
+    ]
+    assert lines[-1] == REVIEW_LINE
+    rows = wiki_tips(wiki_data_dir)
+    assert len(rows) == 120
+    for row, tip in zip(rows, document["tips"], strict=True):
+        assert row["status"] == limits.TIP_STATUS_PENDING
+        for name in ("name", "action", "bucket", "audience", "locator", "evidence_url"):
+            assert row[name] == tip[name], name
+        assert row["start_s"] is None
+    source = source_row(wiki_data_dir, WIKI_REF)
+    assert source["mode"] == limits.SOURCE_MODE_INVESTIGATE
+    assert source["reviewed_at"] == NOW_TEXT
+    assert archive_file(wiki_data_dir, WIKI_REF).read_bytes() == draft.read_bytes()
+    assert len(article_api.requests) == 1  # fetch asked once; propose reads only the packet
+
+
+InvestigateMutation = Callable[[dict[str, Any]], None]
+"""Changes a valid investigation in place."""
+
+
+def _drop_evidence(index: int) -> InvestigateMutation:
+    def mutate(document: dict[str, Any]) -> None:
+        del document["tips"][index]["evidence_url"]
+
+    return mutate
+
+
+def _set_cited_tip(index: int, **values: Any) -> InvestigateMutation:
+    def mutate(document: dict[str, Any]) -> None:
+        document["tips"][index].update(values)
+
+    return mutate
+
+
+def _degraded_with_one_web_page(document: dict[str, Any]) -> None:
+    document["degraded"] = True
+    for tip in document["tips"]:
+        tip["evidence_url"] = ARTICLE
+    document["tips"][9]["evidence_url"] = "https://example.org/placeholder/ch1/tip-10"
+
+
+def _over_the_investigate_cap(document: dict[str, Any]) -> None:
+    tips = document["tips"]
+    document["tips"] = [
+        copy.deepcopy(tips[i % len(tips)]) for i in range(limits.TIPS_MAX_INVESTIGATE + 1)
+    ]
+
+
+def _degraded_in_extract_mode(document: dict[str, Any]) -> None:
+    # Within the extract cap, so `degraded` is the one problem.
+    document.update(mode=limits.SOURCE_MODE_EXTRACT, degraded=True)
+    document["tips"] = document["tips"][:10]
+
+
+NOT_A_HEADING = "is not one of the 12 section headings of the packet"
+
+# The Done-when cases of plan Step 14, with the boundary variants of each rule.
+INVESTIGATE_INVALID_CASES: list[tuple[str, InvestigateMutation, int | None, str, str]] = [
+    ("evidence_url left out", _drop_evidence(5), 5, "evidence_url", "is required"),
+    ("evidence_url null", _set_cited_tip(6, evidence_url=None), 6, "evidence_url", "is required"),
+    (
+        "evidence_url not http(s)",
+        _set_cited_tip(7, evidence_url="ftp://example.org/placeholder"),
+        7,
+        "evidence_url",
+        "must be an http(s) URL",
+    ),
+    (
+        "locator not among the headings",
+        _set_cited_tip(8, locator="Ch.12: Placeholder idea twelve"),
+        8,
+        "locator",
+        NOT_A_HEADING,
+    ),
+    (
+        "locator in other capitals",
+        _set_cited_tip(0, locator=HEADING_ONE.lower()),
+        0,
+        "locator",
+        NOT_A_HEADING,
+    ),
+    (
+        "locator with a trailing space",
+        _set_cited_tip(1, locator=HEADING_ONE + " "),
+        1,
+        "locator",
+        NOT_A_HEADING,
+    ),
+    ("locator null", _set_cited_tip(2, locator=None), 2, "locator", "is required"),
+    (
+        "degraded with a web page cited",
+        _degraded_with_one_web_page,
+        9,
+        "evidence_url",
+        "must be the article URL in a degraded investigation, which searched nothing and read "
+        f"only the article: {ARTICLE}",
+    ),
+    (
+        "TIPS_MAX_INVESTIGATE + 1 tips",
+        _over_the_investigate_cap,
+        None,
+        "tips",
+        f"holds {limits.TIPS_MAX_INVESTIGATE + 1} tips; investigate mode allows at most "
+        f"{limits.TIPS_MAX_INVESTIGATE}",
+    ),
+    (
+        "degraded: true in extract mode",
+        _degraded_in_extract_mode,
+        None,
+        "degraded",
+        "may be true only in investigate mode",
+    ),
+    ("start_s on an article tip", _set_cited_tip(3, start_s=0), 3, "start_s", "must be null"),
+]
+
+
+@pytest.mark.parametrize(
+    ("mutate", "index", "field_name", "problem"),
+    [pytest.param(m, i, f, p, id=name) for name, m, i, f, p in INVESTIGATE_INVALID_CASES],
+)
+def test_an_invalid_investigation_exits_5_with_one_field_problem_and_writes_nothing(
+    capsys: pytest.CaptureFixture[str],
+    wiki_data_dir: Path,
+    mutate: InvestigateMutation,
+    index: int | None,
+    field_name: str,
+    problem: str,
+) -> None:
+    document = investigation_from(get_context(capsys, wiki_data_dir, WIKI_REF))
+    mutate(document)
+    draft = write_investigation(wiki_data_dir, document)
+    before, listing = dump(wiki_data_dir), proposals_listing(wiki_data_dir)
+
+    code, out, err = propose(capsys, wiki_data_dir, draft)
+
+    assert code == 5, err
+    problems = json.loads(out)
+    assert [(p["index"], p["field"]) for p in problems] == [(index, field_name)], problems
+    assert problem in problems[0]["problem"]
+    assert err[1].startswith("CC_E_PROPOSAL: the proposal has 1 problem,")
+    assert dump(wiki_data_dir) == before
+    assert proposals_listing(wiki_data_dir) == listing
+    assert source_row(wiki_data_dir, WIKI_REF)["reviewed_at"] is None
+
+
+def test_an_uncited_tip_in_investigate_mode_is_told_it_is_required_not_to_use_null(
+    capsys: pytest.CaptureFixture[str], wiki_data_dir: Path
+) -> None:
+    document = investigation_from(get_context(capsys, wiki_data_dir, WIKI_REF))
+    document["tips"][4]["evidence_url"] = ""
+    document["tips"][4]["locator"] = ""
+
+    code, out, _ = propose(capsys, wiki_data_dir, write_investigation(wiki_data_dir, document))
+
+    assert code == 5
+    problems = json.loads(out)
+    assert [(p["index"], p["field"]) for p in problems] == [(4, "locator"), (4, "evidence_url")]
+    assert all(p["problem"] == "must not be empty" for p in problems), problems
+
+
+def test_every_uncited_tip_is_reported_in_one_run(
+    capsys: pytest.CaptureFixture[str], wiki_data_dir: Path
+) -> None:
+    document = investigation_from(get_context(capsys, wiki_data_dir, WIKI_REF))
+    for tip in document["tips"]:
+        tip["evidence_url"] = None
+    document["tips"][119]["locator"] = "Reception "  # a heading with a stray space
+
+    code, out, _ = propose(capsys, wiki_data_dir, write_investigation(wiki_data_dir, document))
+
+    assert code == 5
+    problems = [(p["index"], p["field"]) for p in json.loads(out)]
+    assert problems == [(i, "evidence_url") for i in range(119)] + [
+        (119, "locator"),
+        (119, "evidence_url"),
+    ]
+
+
+def test_an_investigation_of_exactly_tips_max_investigate_tips_is_imported(
+    capsys: pytest.CaptureFixture[str], wiki_data_dir: Path
+) -> None:
+    document = investigation_from(get_context(capsys, wiki_data_dir, WIKI_REF))
+    tips = document["tips"]
+    document["tips"] = [
+        copy.deepcopy(tips[i % len(tips)]) for i in range(limits.TIPS_MAX_INVESTIGATE)
+    ]
+
+    code, out, _ = propose(capsys, wiki_data_dir, write_investigation(wiki_data_dir, document))
+
+    assert code == 0, out
+    assert len(wiki_tips(wiki_data_dir)) == limits.TIPS_MAX_INVESTIGATE == 300
+
+
+def test_a_degraded_investigation_citing_the_article_is_imported(
+    capsys: pytest.CaptureFixture[str], wiki_data_dir: Path
+) -> None:
+    document = investigation_from(get_context(capsys, wiki_data_dir, WIKI_REF))
+    assert wiki_fixture_packet()["url"] == ARTICLE  # the article URL is the packet's url
+    document["degraded"] = True
+    for tip in document["tips"]:
+        tip["evidence_url"] = ARTICLE
+
+    code, out, _ = propose(capsys, wiki_data_dir, write_investigation(wiki_data_dir, document))
+
+    assert code == 0, out
+    rows = wiki_tips(wiki_data_dir)
+    assert len(rows) == 120
+    assert {row["evidence_url"] for row in rows} == {ARTICLE}
+    assert [row["locator"] for row in rows] == [tip["locator"] for tip in document["tips"]]
+    assert source_row(wiki_data_dir, WIKI_REF)["mode"] == limits.SOURCE_MODE_INVESTIGATE
+
+
+def test_extract_mode_on_an_article_leaves_locator_and_evidence_url_optional(
+    capsys: pytest.CaptureFixture[str], wiki_data_dir: Path
+) -> None:
+    """The investigate rules hold in investigate mode only. An article proposed in extract
+    mode, the skill's way for an article without headings, is checked like a text."""
+
+    document = investigation_from(get_context(capsys, wiki_data_dir, WIKI_REF))
+    document["mode"] = limits.SOURCE_MODE_EXTRACT
+    document["tips"] = document["tips"][: limits.TIPS_MAX_EXTRACT]
+    for tip in document["tips"][:5]:
+        tip.update(locator=None, evidence_url=None)
+
+    code, out, _ = propose(capsys, wiki_data_dir, write_investigation(wiki_data_dir, document))
+
+    assert code == 0, out
+    assert f"mode: {limits.SOURCE_MODE_EXTRACT}" in out.splitlines()
+    assert len(wiki_tips(wiki_data_dir)) == limits.TIPS_MAX_EXTRACT
+    assert source_row(wiki_data_dir, WIKI_REF)["mode"] == limits.SOURCE_MODE_EXTRACT
+
+
+def test_an_article_without_headings_takes_no_investigate_locator(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path, article_api: FakeArticleApi
+) -> None:
+    article_api.extract = "A synthetic article of one paragraph, without any section heading."
+    data_dir = fetch_article(capsys, tmp_path)
+    ctx = get_context(capsys, data_dir, WIKI_REF)
+    assert ctx["source"]["section_headings"] == []
+    document = fixture_investigation()
+    document.update(packet_sha256=ctx["source"]["packet_sha256"], skill_sha256=ctx["skill_sha256"])
+    document["tips"] = document["tips"][:1]
+
+    code, out, _ = propose(capsys, data_dir, write_investigation(data_dir, document))
+
+    assert code == 5
+    problems = json.loads(out)
+    assert [(p["index"], p["field"]) for p in problems] == [(0, "locator")]
+    assert f"propose its tips in {limits.SOURCE_MODE_EXTRACT} mode" in problems[0]["problem"]
+
+
+def test_investigate_mode_on_a_video_exits_5_on_the_mode(
+    capsys: pytest.CaptureFixture[str], data_dir: Path
+) -> None:
+    document = proposal_from(get_context(capsys, data_dir))
+    document["mode"] = limits.SOURCE_MODE_INVESTIGATE
+    before = dump(data_dir)
+
+    code, out, _ = propose(capsys, data_dir, write_draft(data_dir, document))
+
+    assert code == 5
+    problems = json.loads(out)
+    assert [(p["index"], p["field"]) for p in problems] == [(None, "mode")]
+    assert problems[0]["problem"] == (
+        f"{limits.SOURCE_MODE_INVESTIGATE} mode is for a Wikipedia article only; this source "
+        f"is {limits.SOURCE_KIND_YOUTUBE}: use {limits.SOURCE_MODE_EXTRACT}"
+    )
+    assert dump(data_dir) == before

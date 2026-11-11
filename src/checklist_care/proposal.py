@@ -16,6 +16,13 @@ Any decoding or validation failure raises :class:`ProposalInvalidError` (exit 5,
 nothing is written. A source that is already reviewed raises
 ``AlreadyReviewedError`` (exit 3) before any other check.
 
+**Investigate mode** (a Wikipedia article investigated on the web, plan §4.6
+step 6) is for a ``wiki`` source only and allows up to ``TIPS_MAX_INVESTIGATE``
+tips. Every tip cites its page: ``evidence_url`` is a required ``http(s)`` URL,
+and ``locator`` must equal one of the packet's ``sections[].heading``. With
+``degraded: true`` (no web search on the host; allowed only in this mode) every
+``evidence_url`` is the article URL, the packet's ``url``.
+
 Every string in a proposal comes from an AI host and is untrusted: tip text
 fields are one line and capped by ``limits.py``, the file by
 ``PROPOSAL_FILE_MAX_BYTES``, and a ``\\ud800``-style JSON escape that decodes to
@@ -60,7 +67,9 @@ from checklist_care.limits import (
     REASON_MAX,
     RUBRIC_MAX,
     SOURCE_KIND_MANUAL,
+    SOURCE_KIND_WIKI,
     SOURCE_KIND_YOUTUBE,
+    SOURCE_MODE_EXTRACT,
     SOURCE_MODE_INVESTIGATE,
     START_S_MAX,
     TIP_STATUS_PENDING,
@@ -403,6 +412,13 @@ class _Envelope:
     source: source_store.SourceRow | None
     loaded: context.SourcePacket | None
     mode: str | None
+    cited: bool = False
+    """The investigate-mode tip rules apply: mode ``investigate`` on a ``wiki`` source
+    whose packet loaded. Each tip then needs an ``evidence_url`` and a heading as ``locator``."""
+    degraded: bool = False
+    """``degraded`` is true in investigate mode: every ``evidence_url`` is the article URL."""
+    headings: frozenset[str] = frozenset()
+    """The packet's ``sections[].heading``: the only values an investigate ``locator`` takes."""
 
 
 def _refuse_reviewed(conn: sqlite3.Connection, document: dict[str, Any]) -> None:
@@ -499,6 +515,15 @@ def _check_envelope(
             )
 
     source, loaded = _check_source(checker, conn, data_dir, document)
+    investigate = mode == SOURCE_MODE_INVESTIGATE
+    if investigate and source is not None and source.kind != SOURCE_KIND_WIKI:
+        checker.add(
+            None,
+            "mode",
+            f"{SOURCE_MODE_INVESTIGATE} mode is for a Wikipedia article only; this source is "
+            f"{source.kind}: use {SOURCE_MODE_EXTRACT}",
+        )
+        investigate = False
     for name in ("packet_sha256", "skill_sha256"):
         if name in document and not _is_sha256(document[name]):
             checker.add(None, name, "must be 64 hex digits, copied from `checklist-care context`")
@@ -520,7 +545,19 @@ def _check_envelope(
             "proposal was made; reload the skill, run `checklist-care context` again and redo "
             "the proposal",
         )
-    return _Envelope(source=source, loaded=loaded, mode=mode if isinstance(mode, str) else None)
+    cited = investigate and loaded is not None
+    return _Envelope(
+        source=source,
+        loaded=loaded,
+        mode=mode if isinstance(mode, str) else None,
+        cited=cited,
+        degraded=cited and degraded is True,
+        headings=(
+            frozenset(section.heading for section in loaded.packet.sections)
+            if cited and loaded is not None
+            else frozenset()
+        ),
+    )
 
 
 def _is_sha256(value: Any) -> TypeGuard[str]:
@@ -603,6 +640,76 @@ def _check_list_ids(checker: _Checker, index: int, obj: dict[str, Any]) -> list[
     return [int(item) for item in value]
 
 
+INVESTIGATE_LOCATOR_REQUIRED: Final = (
+    f"is required in {SOURCE_MODE_INVESTIGATE} mode: the section heading this tip belongs to, "
+    "copied exactly from `context.source.section_headings`"
+)
+INVESTIGATE_EVIDENCE_REQUIRED: Final = (
+    f"is required in {SOURCE_MODE_INVESTIGATE} mode: the http(s) URL of the page this tip came "
+    "from; drop a tip that no page you read states"
+)
+
+
+def _check_locator(
+    checker: _Checker, index: int, obj: dict[str, Any], envelope: _Envelope
+) -> str | None:
+    """A tip's ``locator``. Optional text, except in investigate mode (plan §4.5), where it
+    is required and must equal one of the packet's section headings exactly."""
+
+    limit = ("LOCATOR_MAX", LOCATOR_MAX)
+    if not envelope.cited:
+        return checker.text(obj, index, "locator", limit, optional=True)
+    if obj.get("locator") is None:
+        checker.add(index, "locator", INVESTIGATE_LOCATOR_REQUIRED)
+        return None
+    locator = checker.text(obj, index, "locator", limit)
+    if locator is None or locator in envelope.headings:
+        return locator
+    if envelope.headings:
+        problem = (
+            f"is not one of the {len(envelope.headings)} section headings of the packet; copy "
+            "the heading exactly (same characters, capitals, punctuation and spacing) from "
+            "`context.source.section_headings`"
+        )
+    else:
+        problem = (
+            "cannot name a section heading: the packet has none, so the article has no plan "
+            f"to investigate; propose its tips in {SOURCE_MODE_EXTRACT} mode"
+        )
+    checker.add(index, "locator", problem)
+    return None
+
+
+def _check_evidence_url(
+    checker: _Checker, index: int, obj: dict[str, Any], envelope: _Envelope
+) -> str | None:
+    """A tip's ``evidence_url``: an http(s) URL or null. In investigate mode (plan §4.5) it
+    is required, and in a degraded investigation it is the article URL, the packet's ``url``."""
+
+    limit = ("EVIDENCE_URL_MAX", EVIDENCE_URL_MAX)
+    if envelope.cited and obj.get("evidence_url") is None:
+        checker.add(index, "evidence_url", INVESTIGATE_EVIDENCE_REQUIRED)
+        return None
+    evidence_url = checker.text(obj, index, "evidence_url", limit, optional=not envelope.cited)
+    if evidence_url is None:
+        return None
+    if not _is_http_url(evidence_url):
+        checker.add(
+            index, "evidence_url", "must be an http(s) URL" + ("" if envelope.cited else " or null")
+        )
+        return None
+    article = envelope.loaded.packet.url if envelope.loaded is not None else None
+    if envelope.degraded and article is not None and evidence_url != article:
+        checker.add(
+            index,
+            "evidence_url",
+            "must be the article URL in a degraded investigation, which searched nothing and "
+            f"read only the article: {article}",
+        )
+        return None
+    return evidence_url
+
+
 @dataclass(frozen=True)
 class _TipDraft:
     """One tip that passed its own checks, before its ids are checked against stored tips."""
@@ -665,14 +772,9 @@ def _check_tip(
         )
     possible = checker.optional_id(obj, index, "possible_duplicate_of")
     start_s = _check_start(checker, index, obj, envelope)
-    locator = checker.text(obj, index, "locator", ("LOCATOR_MAX", LOCATOR_MAX), optional=True)
+    locator = _check_locator(checker, index, obj, envelope)
     note = checker.text(obj, index, "note", ("NOTE_MAX", NOTE_MAX), optional=True)
-    evidence_url = checker.text(
-        obj, index, "evidence_url", ("EVIDENCE_URL_MAX", EVIDENCE_URL_MAX), optional=True
-    )
-    if evidence_url is not None and not _is_http_url(evidence_url):
-        checker.add(index, "evidence_url", "must be an http(s) URL or null")
-        evidence_url = None
+    evidence_url = _check_evidence_url(checker, index, obj, envelope)
 
     if len(checker.problems) != before:
         return None

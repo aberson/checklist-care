@@ -23,9 +23,9 @@ are one line: no line breaks, tabs or control characters.
 | `bucket` | `1`, `2`, `3` or `4`. See **Buckets** |
 | `audience` | `"kids+"` or `"adults"`. See **Audience** |
 | `list_ids` | Ids from `context.lists`. Always `[]` outside bucket 1. See **Placement** |
-| `start_s` | Whole seconds into the video: the chapter's `start_s` for a chaptered video, else the second the advice starts. Below `duration_s`. `null` for a text |
-| `locator` | The original chapter title when you renamed it, else `null` |
-| `evidence_url` | `null` for a YouTube or text source |
+| `start_s` | Whole seconds into the video: the chapter's `start_s` for a chaptered video, else the second the advice starts. Below `duration_s`. `null` for an article or a text |
+| `locator` | In an investigation: the section heading the tip belongs to, copied exactly from `context.source.section_headings`. Otherwise the original chapter title when you renamed it, else `null` |
+| `evidence_url` | In an investigation: the `http(s)` URL of the page the tip came from; in a degraded one, the article URL (the packet's `url`). Otherwise `null` |
 | `duplicate_of` | The id of the stored tip this one repeats, else `null`. Only in bucket 4. See **Duplicates** |
 | `possible_duplicate_of` | The id of a stored near match, else `null` |
 | `note` | A short remark: why this bucket, these lists, or this duplicate mark |
@@ -101,8 +101,9 @@ that are not themselves duplicates, the rejected ideas.)
   - "Staring At The Sun" → "Morning Daylight, Five Minutes" (unsafe read literally)
   - "Skipping Breakfast" → "Eat A Real Breakfast" (names a harm)
 - A chapter title longer than `NAME_MAX` is shortened to fit, with the original in `locator`.
-- **Other sources** (a video without chapters, or a text): write the name yourself: short,
-  catchy, in Title Case.
+- **Other sources** (a video without chapters, a text, or an investigated article): write the
+  name yourself: short, catchy, in Title Case. In an investigation the heading goes in `locator`,
+  never in the name.
 - **Action:** always states the healthy behavior, even when the title names the harm. For
   "Skipping Breakfast" the action is "Eat something with protein before you leave the house", not
   anything about skipping.
@@ -120,13 +121,16 @@ allowed:
 | `skill_sha256` | Copied from `context.skill_sha256` |
 | `host` | `"claude-code"` or `"codex"`: the value your adapter names |
 | `model` | The model name your host reports, as free text |
-| `mode` | `"extract"` |
-| `degraded` | `false` |
-| `tips` | The tips, in source order; `[]` when the source holds no advice |
+| `mode` | `"investigate"` for a Wikipedia article investigated on the web (core step 6), else `"extract"` |
+| `degraded` | `true` only for an investigation run without web search (core step 6), else `false` |
+| `tips` | The tips, in source order (in heading order for an investigation); `[]` when the source holds no advice. At most `TIPS_MAX_EXTRACT` in extract mode and `TIPS_MAX_INVESTIGATE` in investigate mode |
 
-The example below is self-written: the video id `EXAMPLE0001`, its chapters and its tips are made
-up. It shows a chapter title kept as the name and placed on two lists, a renamed title that no
-list's cue fits, an occasional activity and a one-time setup.
+Two examples follow. Both are self-written, and every id, title, heading, page and tip in them is
+made up.
+
+The first extracts a video, `EXAMPLE0001`. It shows a chapter title kept as the name and placed
+on two lists, a renamed title that no list's cue fits, an occasional activity and a one-time
+setup.
 
 ```json
 {
@@ -199,5 +203,85 @@ list's cue fits, an occasional activity and a one-time setup.
 }
 ```
 
-The list ids in the example are only illustrations: always take ids, places, audiences and cues
+The second investigates the Wikipedia article of a book, `Example_Book`, whose section headings
+include `Ch.1: Start Smaller Than You Think`, `Ch.2: Let The Room Remind You` and
+`Ch.3: One Thing At A Time`. Each tip names its heading in `locator` and the page it came from in
+`evidence_url`: the author's own site, a summary, an interview, and the article itself for a tip
+taken from the article's text.
+
+```json
+{
+  "schema": "checklist-care.proposal/1",
+  "source_ref": "wiki:en:Example_Book",
+  "packet_sha256": "<copied from context.source.packet_sha256>",
+  "skill_sha256": "<copied from context.skill_sha256>",
+  "host": "claude-code",
+  "model": "<the model name your host reports>",
+  "mode": "investigate",
+  "degraded": false,
+  "tips": [
+    {
+      "name": "One Push-Up Before The Shower",
+      "action": "Do one push-up before you step into the shower",
+      "reason": "A start too small to skip makes the habit stick; the author says to grow it only later.",
+      "bucket": 1,
+      "audience": "adults",
+      "list_ids": [1],
+      "start_s": null,
+      "locator": "Ch.1: Start Smaller Than You Think",
+      "evidence_url": "https://example.org/author/start-smaller",
+      "duplicate_of": null,
+      "possible_duplicate_of": null,
+      "note": "daily, seconds long, due while getting ready in the bathroom"
+    },
+    {
+      "name": "Water Bottle By Your Bag",
+      "action": "Fill your water bottle and set it next to your bag",
+      "reason": "Putting what you need where you will see it makes the good choice the easy one.",
+      "bucket": 1,
+      "audience": "kids+",
+      "list_ids": [5, 6],
+      "start_s": null,
+      "locator": "Ch.2: Let The Room Remind You",
+      "evidence_url": "https://example.net/summaries/example-book",
+      "duplicate_of": null,
+      "possible_duplicate_of": null,
+      "note": "daily, due when leaving the house"
+    },
+    {
+      "name": "Weekly Room Reset",
+      "action": "Once a week, put one room's things back where they belong",
+      "reason": "A regular reset keeps the room's reminders in place, but it takes real time.",
+      "bucket": 2,
+      "audience": "kids+",
+      "list_ids": [],
+      "start_s": null,
+      "locator": "Ch.2: Let The Room Remind You",
+      "evidence_url": "https://example.com/interviews/rooms-that-remind",
+      "duplicate_of": null,
+      "possible_duplicate_of": null,
+      "note": "weekly, takes real time"
+    },
+    {
+      "name": "One New Habit At A Time",
+      "action": "Work on one new habit at a time, never several at once",
+      "reason": "The article sums up the chapter this way; it is a principle, not a daily step.",
+      "bucket": 3,
+      "audience": "adults",
+      "list_ids": [],
+      "start_s": null,
+      "locator": "Ch.3: One Thing At A Time",
+      "evidence_url": "https://en.wikipedia.org/wiki/Example_Book",
+      "duplicate_of": null,
+      "possible_duplicate_of": null,
+      "note": "a principle; taken from the article's own text"
+    }
+  ]
+}
+```
+
+In a degraded investigation the proposal has `"degraded": true` and every tip's `evidence_url` is
+the article URL, copied exactly from the packet's `url`.
+
+The list ids in the examples are only illustrations: always take ids, places, audiences and cues
 from `context.lists`.

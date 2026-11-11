@@ -1549,6 +1549,7 @@ module called from production code is exercised through its caller: the CLI subc
   - The contract tests pass for the updated core, including the investigate example.
   - The full Python gate is green.
 - **Depends on:** 13
+- **Status:** DONE (2026-11-11)
 
 <!-- autofix-applied: 2026-11-08 -->
 ### Step 15: Acceptance scorer and in-sample labels
