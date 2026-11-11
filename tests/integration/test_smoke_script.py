@@ -6,16 +6,33 @@ that it passes in under 120 s, that nothing listens on the port it used afterwar
 that its temp directory is gone. The smoke's temp directory is pointed into this test's
 own folder (``TMP``/``TEMP``/``TMPDIR``), so "nothing left behind" is checked there.
 
-Almost every other test is a red anchor for one smoke check: it feeds that check bad
-data and expects exit 1 with the check's own failure line, and the cleanup (the real
-server stopped, the temp directory gone). Most run ``main()`` in-process against the real
-commands and the real server, with one answer rewritten on its way into the smoke
-(:class:`Tamper`, :func:`tamper_cli`).
+Almost every other test is a red anchor, of one of two kinds. Most run ``main()``
+in-process against the real commands and the real server.
 
-The drift tables keep the row count and change one field of one row, so a check that
-compared only counts would pass them. Each table is derived from the module that
-produces the data (``proposal.TIP_FIELDS``, ``printing.PrintItem``, ``packet.Chapter``),
-so a field added there becomes a new row here.
+1. A check fed bad data. One answer is rewritten on its way into the smoke
+   (:class:`Tamper`, :func:`tamper_cli`), or a command is made to fail for real
+   (:func:`before_cli`), and the anchor expects exit 1 with that check's own failure line,
+   and the cleanup (the real server stopped, the temp directory gone). The drift tables
+   keep the row count and change one field of one row, so a check that compared only
+   counts would pass them. Each table is derived from the module that produces the data
+   (``proposal.TIP_FIELDS``, ``printing.PrintItem``, ``packet.Chapter``), so a field
+   added there becomes a new row here.
+
+2. A safety action (a kill, a retry, a wait, a launch flag) or a guard that a normal run
+   already satisfies, met by the condition it exists for. Bad data never reaches these,
+   so an anchor of the first kind cannot see one deleted. Each of these anchors runs
+   through ``main()``, creates the condition for real, and then asserts world state, not
+   only the FAIL text: a pid, a port, a directory, what a listener saw, the arguments a
+   child was started with. The conditions: a command that outlives its time limit or is
+   interrupted while it runs, and a server, each with a child of its own (a stand-in
+   writes both pids; :func:`still_alive` checks them through ``server.run.pid_alive``,
+   since ``os.kill(pid, 0)`` terminates a process on Windows); a listener on the server's
+   port after the stop, held or released after a second; port probes that time out or
+   fail otherwise; a temp directory that is busy twice, still there once, or gone but
+   reported busy; a server that answers late, a request it never answers, a proxy in the
+   environment, and a server that survives every kill. The stand-ins start a grandchild
+   because the venv ``python.exe`` launcher's job object kills the interpreter on a plain
+   ``process.kill()`` too, so only a grandchild tells a tree kill from a plain kill.
 
 ``--live`` is exercised offline: ``fetch`` runs in-process through ``cli.main`` with the
 two network seams faked, so the smoke reads the real ``fetch`` output format. The live
@@ -30,14 +47,17 @@ import io
 import json
 import os
 import shutil
+import signal
 import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
+import urllib.request
 from collections.abc import Callable, Iterable, Iterator
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import contextmanager, redirect_stderr, redirect_stdout, suppress
 from dataclasses import dataclass, field
 from email.message import Message
 from pathlib import Path
@@ -49,6 +69,7 @@ from youtube_transcript_api import FetchedTranscript, FetchedTranscriptSnippet
 
 from checklist_care import cli, limits, paths, printing, processes, proposal
 from checklist_care.server import HOST
+from checklist_care.server.run import pid_alive
 from checklist_care.sources import packet as packet_module
 from checklist_care.sources import youtube
 
@@ -270,13 +291,19 @@ def load_smoke(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     return module
 
 
-@pytest.fixture
-def smoke(monkeypatch: pytest.MonkeyPatch, temp_root: Path) -> ModuleType:
-    """``scripts/smoke.py`` loaded as a module, its temp directory under ``temp_root``."""
+def smoke_in(temp_root: Path, monkeypatch: pytest.MonkeyPatch) -> ModuleType:
+    """A fresh module of ``scripts/smoke.py`` whose temp directory is under ``temp_root``."""
 
     module = load_smoke(monkeypatch)
     monkeypatch.setattr(tempfile, "tempdir", str(temp_root))
     return module
+
+
+@pytest.fixture
+def smoke(monkeypatch: pytest.MonkeyPatch, temp_root: Path) -> ModuleType:
+    """``scripts/smoke.py`` loaded as a module, its temp directory under ``temp_root``."""
+
+    return smoke_in(temp_root, monkeypatch)
 
 
 def run_main(smoke: ModuleType, capsys: pytest.CaptureFixture[str], *argv: str) -> SmokeRun:
@@ -287,11 +314,11 @@ def run_main(smoke: ModuleType, capsys: pytest.CaptureFixture[str], *argv: str) 
     return SmokeRun(code=code, out=captured.out, err=captured.err)
 
 
-@pytest.fixture
-def started_servers(
+@contextmanager
+def recording_servers(
     smoke: ModuleType, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[list[subprocess.Popen[bytes]]]:
-    """Record every real server the smoke starts; kill any left over at teardown."""
+    """Record every real server the smoke starts; kill any left over on the way out."""
 
     started: list[subprocess.Popen[bytes]] = []
     real_start = smoke.start_server
@@ -307,6 +334,16 @@ def started_servers(
     finally:
         for process in started:
             processes.kill_tree(process)
+
+
+@pytest.fixture
+def started_servers(
+    smoke: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[list[subprocess.Popen[bytes]]]:
+    """Record every real server the smoke starts; kill any left over at teardown."""
+
+    with recording_servers(smoke, monkeypatch) as started:
+        yield started
 
 
 def assert_failed_and_cleaned_up(
@@ -762,6 +799,35 @@ def raising(error: BaseException) -> Callable[[Any], Any]:
 NOT_JSON = json.JSONDecodeError("Expecting value", "<html>", 0)
 
 
+@dataclass
+class FailingFor:
+    """A rewrite that fails every answer with ``URLError(reason)`` for ``seconds`` after
+    the first one, as a server that is not ready yet, then lets the answers through.
+    ``raised`` counts the failures. A table row holds a template: use :meth:`fresh`."""
+
+    seconds: float
+    reason: str
+    raised: int = 0
+    first: float | None = None
+
+    def fresh(self) -> FailingFor:
+        return FailingFor(self.seconds, self.reason)
+
+    def __call__(self, answer: Any) -> Any:
+        now = time.monotonic()
+        if self.first is None:
+            self.first = now
+        if now - self.first < self.seconds:
+            self.raised += 1
+            raise urllib.error.URLError(self.reason)
+        return answer
+
+
+NEVER_ANSWERS_S = 15.0
+"""How long "never" lasts for the health check: far past the 1 s limit that row sets, and
+finite, so a smoke without its deadline ends (and passes, which fails the row)."""
+
+
 @dataclass(frozen=True)
 class BadAnswer:
     """One rewritten answer and the start of the failure line it must cause, in which
@@ -808,7 +874,7 @@ BAD_ANSWERS = {
     "health-never-answers": BadAnswer(
         "GET",
         "/health",
-        raising(urllib.error.URLError("injected refusal")),
+        FailingFor(NEVER_ANSWERS_S, "injected refusal"),
         "FAIL: phase 4/7 serve: the server did not answer http://127.0.0.1:{port}/api/health "
         "within 1 s",
         settings={"READY_TIMEOUT_S": 1.0},
@@ -882,7 +948,8 @@ def test_a_bad_server_answer_fails_its_check_and_cleans_up(
     bad = BAD_ANSWERS[row]
     for name, value in bad.settings.items():
         monkeypatch.setattr(smoke, name, value)
-    tamper = Tamper(bad.method, bad.path, bad.rewrite, when=bad.when)
+    rewrite = bad.rewrite.fresh() if isinstance(bad.rewrite, FailingFor) else bad.rewrite
+    tamper = Tamper(bad.method, bad.path, rewrite, when=bad.when)
     tamper_with(smoke, monkeypatch, tamper)
 
     run = run_main(smoke, capsys)
@@ -938,8 +1005,16 @@ def test_a_server_that_outlives_its_kill_fails_the_stop_and_is_stopped_by_the_cl
     patched.kill_tree = first_kill_misses
     patched.KILL_WAIT_S = 0.5
     monkeypatch.setattr(smoke, "processes", patched)
-
-    run = run_main(smoke, capsys)
+    # A stop that waited without its limit would wait forever on this server; the
+    # backstop ends that wait (and the smoke then fails this test) instead of the run.
+    backstop = threading.Timer(
+        BACKSTOP_S, lambda: [kill_pid_tree(process.pid) for process in started_servers]
+    )
+    backstop.start()
+    try:
+        run = run_main(smoke, capsys)
+    finally:
+        backstop.cancel()
 
     pid = started_servers[0].pid
     assert kills == [pid, pid]
@@ -954,14 +1029,20 @@ def test_a_server_that_outlives_its_kill_fails_the_stop_and_is_stopped_by_the_cl
     )
 
 
+@pytest.mark.parametrize("log_goes_first", [False, True], ids=["locked", "half-removed"])
 def test_a_temp_dir_that_cannot_be_removed_fails_the_smoke(
+    log_goes_first: bool,
     smoke: ModuleType,
     started_servers: list[subprocess.Popen[bytes]],
     temp_root: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    # half-removed: the server log is deleted before the removal fails, so the failure is
+    # reported without the log tail (a log that cannot be read is no reason to crash).
     def locked(path: Any, *args: Any, **kwargs: Any) -> None:
+        if log_goes_first:
+            (Path(path) / smoke.SERVER_LOG_NAME).unlink(missing_ok=True)
         raise PermissionError(13, "injected lock", str(path))
 
     patched = SimpleNamespace(**vars(shutil))
@@ -973,6 +1054,7 @@ def test_a_temp_dir_that_cannot_be_removed_fails_the_smoke(
     run = run_main(smoke, capsys)
     work_dir = Path(run.value("work_dir"))
     left_behind = work_dir.exists()
+    log_left = (work_dir / smoke.SERVER_LOG_NAME).exists()
     shutil.rmtree(work_dir)
 
     assert run.code == 1, run.out + run.err
@@ -984,6 +1066,8 @@ def test_a_temp_dir_that_cannot_be_removed_fails_the_smoke(
     assert "PASS" not in run.out
     assert started_servers[0].poll() is not None
     assert refuses(int(run.value("port")))
+    assert log_left is not log_goes_first
+    assert ("server log (server.log" in run.err) is not log_goes_first
 
 
 # --- the commands and the packet: checks before the server ---------------------------------
@@ -1148,23 +1232,68 @@ def test_an_init_that_writes_no_database_fails_the_init_phase(
     )
 
 
-def test_a_command_over_its_time_limit_is_killed_and_fails_the_smoke(
+def before_cli(
     smoke: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    command: str,
+    prepare: Callable[[Path], None],
+) -> list[int]:
+    """Wrap the smoke's ``run_cli`` so ``prepare(data_dir)`` runs just before the real
+    ``command``, which then fails for real. Returns the command's exit codes."""
+
+    real_run_cli = smoke.run_cli
+    codes: list[int] = []
+
+    def run_cli(data_dir: Path, *args: str, timeout: float | None = None) -> Any:
+        if args[0] != command:
+            return real_run_cli(data_dir, *args, timeout=timeout)
+        prepare(data_dir)
+        result = real_run_cli(data_dir, *args, timeout=timeout)
+        codes.append(result.code)
+        return result
+
+    monkeypatch.setattr(smoke, "run_cli", run_cli)
+    return codes
+
+
+def a_file_in_place_of_the_data_dir(data_dir: Path) -> None:
+    data_dir.write_bytes(b"")
+
+
+def no_database(data_dir: Path) -> None:
+    (data_dir / paths.DB_FILENAME).unlink()
+
+
+NON_ZERO_EXITS = {
+    "init": (["--offline", str(FIXTURE)], a_file_in_place_of_the_data_dir, "phase 1/7 init"),
+    "fetch": (["--live"], no_database, "phase 2/7 packet"),
+    "context": (["--offline", str(FIXTURE)], no_database, "phase 3/7 propose"),
+}
+"""The commands whose exit code the smoke checks, apart from ``propose`` (the subprocess
+anchor above): the smoke options that run it, what makes it fail, and the phase it fails."""
+
+
+@pytest.mark.parametrize("command", list(NON_ZERO_EXITS))
+def test_a_command_that_exits_non_zero_fails_its_phase_and_cleans_up(
+    command: str,
+    smoke: ModuleType,
+    in_process_fetch: FetchSeam,
     started_servers: list[subprocess.Popen[bytes]],
     temp_root: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(smoke, "CLI_TIMEOUT_S", 0.01)  # no interpreter starts that fast
+    argv, prepare, phase = NON_ZERO_EXITS[command]
+    codes = before_cli(smoke, monkeypatch, command, prepare)
 
-    run = run_main(smoke, capsys)
+    run = run_main(smoke, capsys, *argv)
 
+    assert len(codes) == 1 and codes[0] != 0  # the real command failed
     assert_failed_and_cleaned_up(
         run,
         started_servers,
         temp_root,
-        "FAIL: phase 1/7 init: `checklist-care init` gave no result within 0.01 s; its process "
-        "tree was killed",
+        f"FAIL: {phase}: `checklist-care {command}` exited {codes[0]}:",
         server=False,
     )
 
@@ -1498,3 +1627,673 @@ def test_a_fetch_that_prints_a_drifted_value_fails_the_packet_phase(
         "FAIL: phase 2/7 packet: " + FETCH_FAILURES[key].format(**seen),
         server=False,
     )
+
+
+# --- safety actions and guards, each met by the condition it exists for ---------------------
+
+STAND_IN_LIFETIME_S = 30.0
+"""How long a stand-in command and its child live unless killed: far past every limit an
+anchor sets, and finite, so a smoke that never kills them still ends."""
+
+STAND_IN_START_S = 30.0
+"""How long a stand-in may take to write its pids."""
+
+SETTLE_S = 2.0
+"""How long a killed process may take to report its exit."""
+
+BACKSTOP_S = 20.0
+"""How long before an anchor ends a condition that a smoke without its limit would wait on
+forever (that smoke then fails the anchor instead of hanging the run). Far past every
+limit the anchors set."""
+
+PROXY_LIFETIME_S = 120.0
+LISTENER_TICK_S = 0.05
+BIND_RETRY_S = 5.0
+"""How long a listener retries binding a port that a stopped server has just released."""
+
+TREE_STAND_IN = """\
+import os, subprocess, sys, time
+pid_file, lifetime = sys.argv[1], float(sys.argv[2])
+child = subprocess.Popen(
+    [sys.executable, "-c", "import sys, time; time.sleep(float(sys.argv[1]))", str(lifetime)],
+    stdin=subprocess.DEVNULL,
+    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+)
+with open(pid_file + ".tmp", "w", encoding="utf-8") as out:
+    out.write(f"{os.getpid()} {child.pid}")
+os.replace(pid_file + ".tmp", pid_file)
+time.sleep(lifetime)
+"""
+"""A command with a child of its own. It writes its pid and its child's to ``argv[1]``,
+and both outlive every time limit."""
+
+SERVER_STAND_IN = """\
+import os, subprocess, sys
+pid_file, command = sys.argv[1], sys.argv[2:]
+child = subprocess.Popen(
+    command,
+    stdin=subprocess.DEVNULL,
+    stdout=sys.stdout,
+    stderr=sys.stderr,
+    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+)
+with open(pid_file + ".tmp", "w", encoding="utf-8") as out:
+    out.write(f"{os.getpid()} {child.pid}")
+os.replace(pid_file + ".tmp", pid_file)
+sys.exit(child.wait())
+"""
+"""Runs ``argv[2:]`` (the real ``serve``) as its child and writes both pids to ``argv[1]``."""
+
+
+def kill_pid_tree(pid: int) -> None:
+    """Teardown and backstops: kill ``pid`` and its descendants, if it still runs."""
+
+    if not pid_alive(pid):
+        return
+    if sys.platform == "win32":
+        subprocess.run(
+            ["taskkill", "/T", "/F", "/PID", str(pid)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=processes.NO_WINDOW,
+            timeout=processes.KILL_WAIT_S,
+            check=False,
+        )
+    else:
+        with suppress(OSError):
+            os.kill(pid, signal.SIGKILL)
+
+
+def still_alive(pids: Iterable[int]) -> list[int]:
+    """The pids among ``pids`` that still run once a killed process has had ``SETTLE_S``
+    to exit (``server.run.pid_alive``: ``OpenProcess`` + ``GetExitCodeProcess`` on
+    Windows)."""
+
+    pending = list(pids)
+    deadline = time.monotonic() + SETTLE_S
+    while True:
+        alive = [pid for pid in pending if pid_alive(pid)]
+        if not alive or time.monotonic() >= deadline:
+            return alive
+        time.sleep(0.05)
+
+
+def remove_with_retries(path: Path) -> None:
+    """Teardown: remove ``path`` once a killed process has let go of its files."""
+
+    deadline = time.monotonic() + 5 * SETTLE_S
+    while True:
+        try:
+            shutil.rmtree(path)
+            return
+        except FileNotFoundError:
+            return
+        except OSError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.2)
+
+
+@dataclass
+class StandIn:
+    """A command replaced by a stand-in that starts a child of its own and writes both
+    pids, its own first, to ``pid_file``."""
+
+    pid_file: Path
+
+    def wait_started(self) -> None:
+        deadline = time.monotonic() + STAND_IN_START_S
+        while not self.pid_file.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+
+    def pids(self) -> list[int]:
+        # Without both pids the anchor proves nothing, so a missing file fails loudly.
+        assert self.pid_file.exists(), f"the stand-in never wrote {self.pid_file.name}"
+        pids = [int(pid) for pid in self.pid_file.read_text(encoding="utf-8").split()]
+        assert len(pids) == 2, pids
+        return pids
+
+    def kill_survivors(self) -> None:
+        if self.pid_file.exists():
+            for pid in self.pids():
+                kill_pid_tree(pid)
+
+
+def replace_command(
+    smoke: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    command: str,
+    replace: Callable[[list[str]], list[str]],
+) -> None:
+    """Make the smoke run ``replace(argv)`` in place of ``command``'s real argv."""
+
+    real_cli_command = smoke.cli_command
+
+    def cli_command(data_dir: Path, *args: str) -> list[str]:
+        argv: list[str] = real_cli_command(data_dir, *args)
+        return replace(argv) if args[0] == command else argv
+
+    monkeypatch.setattr(smoke, "cli_command", cli_command)
+
+
+@pytest.fixture
+def init_stand_in(
+    smoke: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> Iterator[StandIn]:
+    """``init`` runs :data:`TREE_STAND_IN`; a survivor is killed at teardown."""
+
+    stand_in = StandIn(tmp_path / "init.pids")
+    replace_command(
+        smoke,
+        monkeypatch,
+        "init",
+        lambda argv: [
+            sys.executable,
+            "-c",
+            TREE_STAND_IN,
+            str(stand_in.pid_file),
+            str(STAND_IN_LIFETIME_S),
+        ],
+    )
+    try:
+        yield stand_in
+    finally:
+        stand_in.kill_survivors()
+
+
+@pytest.fixture
+def serve_stand_in(
+    smoke: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> Iterator[StandIn]:
+    """``serve`` runs as the child of :data:`SERVER_STAND_IN`, so the real server is a
+    grandchild of the process the smoke started. A survivor is killed at teardown."""
+
+    stand_in = StandIn(tmp_path / "serve.pids")
+    replace_command(
+        smoke,
+        monkeypatch,
+        "serve",
+        lambda argv: [sys.executable, "-c", SERVER_STAND_IN, str(stand_in.pid_file), *argv],
+    )
+    try:
+        yield stand_in
+    finally:
+        stand_in.kill_survivors()
+
+
+def start_children_with(
+    smoke: ModuleType, monkeypatch: pytest.MonkeyPatch, popen: type[subprocess.Popen[bytes]]
+) -> None:
+    """Make the smoke start its children with ``popen``, a subclass of the real Popen."""
+
+    monkeypatch.setattr(
+        smoke, "subprocess", SimpleNamespace(**{**vars(subprocess), "Popen": popen})
+    )
+
+
+class LoopbackListener:
+    """A listener on ``127.0.0.1:<port>`` (a free port when 0) for ``lifetime_s`` seconds,
+    on a thread of its own. It accepts each connection and closes it at once; with
+    ``hold``, it keeps each one open without sending a byte and records how long the
+    client took to hang up."""
+
+    def __init__(self, port: int = 0, *, lifetime_s: float, hold: bool = False) -> None:
+        self.hold = hold
+        self.accepted = 0
+        self.hung_up_after: list[float] = []
+        self._closes_at = time.monotonic() + lifetime_s
+        self._stop = threading.Event()
+        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        deadline = time.monotonic() + BIND_RETRY_S
+        while True:
+            try:
+                self._socket.bind((HOST, port))
+                break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    self._socket.close()
+                    raise
+                time.sleep(LISTENER_TICK_S)
+        self._socket.listen()
+        self._socket.settimeout(LISTENER_TICK_S)
+        self.port = int(self._socket.getsockname()[1])
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+        self._thread.start()
+
+    def _serve(self) -> None:
+        held: list[tuple[socket.socket, float]] = []
+        try:
+            while not self._stop.is_set() and time.monotonic() < self._closes_at:
+                try:
+                    connection, _ = self._socket.accept()
+                except TimeoutError:
+                    pass
+                except OSError:
+                    break
+                else:
+                    self.accepted += 1
+                    if self.hold:
+                        connection.setblocking(False)
+                        held.append((connection, time.monotonic()))
+                    else:
+                        connection.close()
+                for entry in list(held):
+                    connection, since = entry
+                    try:
+                        data = connection.recv(65536)
+                    except BlockingIOError:
+                        continue
+                    except OSError:
+                        data = b""
+                    if not data:  # the client hung up
+                        self.hung_up_after.append(time.monotonic() - since)
+                        held.remove(entry)
+                        connection.close()
+        finally:
+            for connection, _ in held:
+                connection.close()
+            self._socket.close()
+
+    def close(self) -> None:
+        self._stop.set()
+        self._thread.join(timeout=5.0)
+
+
+def test_a_command_over_its_time_limit_has_its_whole_process_tree_killed(
+    smoke: ModuleType,
+    init_stand_in: StandIn,
+    started_servers: list[subprocess.Popen[bytes]],
+    temp_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class StartedFirst(subprocess.Popen[bytes]):
+        def communicate(self, *args: Any, **kwargs: Any) -> Any:
+            init_stand_in.wait_started()  # the limit runs once the process tree exists
+            return super().communicate(*args, **kwargs)
+
+    start_children_with(smoke, monkeypatch, StartedFirst)
+    monkeypatch.setattr(smoke, "CLI_TIMEOUT_S", 1.0)
+
+    run = run_main(smoke, capsys)
+
+    assert still_alive(init_stand_in.pids()) == []  # the stand-in and its child
+    assert_failed_and_cleaned_up(
+        run,
+        started_servers,
+        temp_root,
+        "FAIL: phase 1/7 init: `checklist-care init` gave no result within 1 s; its process "
+        "tree was killed",
+        server=False,
+    )
+
+
+def test_an_interrupt_while_a_command_runs_has_its_whole_process_tree_killed(
+    smoke: ModuleType,
+    init_stand_in: StandIn,
+    started_servers: list[subprocess.Popen[bytes]],
+    temp_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class InterruptedOnce(subprocess.Popen[bytes]):
+        interrupted = False
+
+        def communicate(self, *args: Any, **kwargs: Any) -> Any:
+            if not self.interrupted:  # Ctrl+C while the smoke waits on `init`
+                self.interrupted = True
+                init_stand_in.wait_started()
+                raise KeyboardInterrupt
+            return super().communicate(*args, **kwargs)
+
+    start_children_with(smoke, monkeypatch, InterruptedOnce)
+
+    with pytest.raises(KeyboardInterrupt):
+        smoke.main(["--offline", str(FIXTURE)])
+    run = SmokeRun(code=-1, out=capsys.readouterr().out, err="")
+
+    assert still_alive(init_stand_in.pids()) == []  # the stand-in and its child
+    assert started_servers == []
+    assert "PASS" not in run.out
+    assert Path(run.value("work_dir")).parent == temp_root
+    assert sorted(temp_root.iterdir()) == []
+
+
+def test_a_server_with_a_child_of_its_own_is_stopped_as_a_whole_tree(
+    smoke: ModuleType,
+    serve_stand_in: StandIn,
+    started_servers: list[subprocess.Popen[bytes]],
+    temp_root: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run = run_main(smoke, capsys)
+
+    assert run.code == 0, run.out + run.err
+    assert still_alive(serve_stand_in.pids()) == []  # the stand-in and the real server
+    assert refuses(int(run.value("port")))  # which the grandchild served
+    assert sorted(temp_root.iterdir()) == []
+
+
+def test_a_server_that_survives_every_kill_still_has_the_temp_dir_removal_tried(
+    smoke: ModuleType,
+    started_servers: list[subprocess.Popen[bytes]],
+    temp_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    kills: list[int] = []
+    removals: list[str] = []
+
+    def missed(process: subprocess.Popen[bytes]) -> None:
+        kills.append(process.pid)
+
+    def locked(path: Any, *args: Any, **kwargs: Any) -> None:
+        # As on Windows, where the live server's open log refuses the removal.
+        removals.append(str(path))
+        raise PermissionError(13, "injected: in use by the live server", str(path))
+
+    monkeypatch.setattr(
+        smoke,
+        "processes",
+        SimpleNamespace(**{**vars(processes), "kill_tree": missed, "KILL_WAIT_S": 0.5}),
+    )
+    monkeypatch.setattr(smoke, "shutil", SimpleNamespace(**{**vars(shutil), "rmtree": locked}))
+    monkeypatch.setattr(smoke, "REMOVE_ATTEMPTS", 2)
+    monkeypatch.setattr(smoke, "REMOVE_DELAY_S", 0.0)
+
+    run = run_main(smoke, capsys)
+    server = started_servers[0]
+    survived = server.poll() is None
+    processes.kill_tree(server)
+    work_dir = Path(run.value("work_dir"))
+    left_behind = work_dir.exists()
+    remove_with_retries(work_dir)
+
+    assert survived  # no kill reached the server
+    assert kills == [server.pid, server.pid]  # phase 7 tried, then the cleanup
+    assert removals == [str(work_dir)] * 2  # and the cleanup still went on to the removal
+    assert left_behind
+    assert run.code == 1, run.out + run.err
+    stop = f"the server (pid {server.pid}) still runs 0.5 s after its process tree was killed"
+    assert run.failures[:2] == [f"FAIL: phase 7/7 stop: {stop}", f"FAIL: cleanup: {stop}"]
+    assert len(run.failures) == 3, run.err
+    assert run.failures[2].startswith(
+        f"FAIL: cleanup: cannot remove the temp directory {work_dir} after 2 attempts: "
+    )
+
+
+def squat_after_stop(
+    smoke: ModuleType, monkeypatch: pytest.MonkeyPatch, *, lifetime_s: float
+) -> list[LoopbackListener]:
+    """After phase 7's real stop, a listener takes the server's port for ``lifetime_s``
+    seconds, as a descendant that the kill missed would."""
+
+    squatters: list[LoopbackListener] = []
+    real_stop = smoke.stop_server
+
+    def stop_then_squat(process: subprocess.Popen[bytes]) -> None:
+        real_stop(process)
+        if not squatters:  # the server's port is the last argument of `serve`
+            squatters.append(LoopbackListener(int(process.args[-1]), lifetime_s=lifetime_s))
+
+    monkeypatch.setattr(smoke, "stop_server", stop_then_squat)
+    return squatters
+
+
+def test_a_port_that_still_accepts_after_the_stop_fails_phase_7(
+    smoke: ModuleType,
+    started_servers: list[subprocess.Popen[bytes]],
+    temp_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(smoke, "REFUSE_WAIT_S", 0.5)
+    squatters = squat_after_stop(smoke, monkeypatch, lifetime_s=BACKSTOP_S)
+    try:
+        run = run_main(smoke, capsys)
+    finally:
+        for squatter in squatters:
+            squatter.close()
+
+    port = int(run.value("port"))
+    assert [squatter.port for squatter in squatters] == [port]
+    assert squatters[0].accepted >= 1  # the smoke's probes reached the listener
+    assert_failed_and_cleaned_up(
+        run,
+        started_servers,
+        temp_root,
+        f"FAIL: phase 7/7 stop: port {port} accepts connections after the server was stopped",
+    )
+
+
+def test_a_port_that_refuses_only_after_a_second_still_passes_phase_7(
+    smoke: ModuleType,
+    started_servers: list[subprocess.Popen[bytes]],
+    temp_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    squatters = squat_after_stop(smoke, monkeypatch, lifetime_s=1.0)
+    try:
+        run = run_main(smoke, capsys)
+    finally:
+        for squatter in squatters:
+            squatter.close()
+
+    assert run.code == 0, run.out + run.err
+    assert len(squatters) == 1
+    # While the port accepted, the smoke probed it once per poll interval, not in a loop.
+    assert 2 <= squatters[0].accepted <= 1.0 / smoke.POLL_S + 2, squatters[0].accepted
+    assert refuses(int(run.value("port")))
+    assert sorted(temp_root.iterdir()) == []
+
+
+INCONCLUSIVE_PROBES: dict[str, tuple[Callable[[], OSError], str]] = {
+    "timeout": (
+        lambda: TimeoutError("timed out"),
+        "neither accepted nor refused a connection within {connect_s:g} s",
+    ),
+    "another-socket-error": (
+        lambda: OSError("injected: the network is unreachable"),
+        "gave OSError: injected: the network is unreachable",
+    ),
+}
+"""``port_state``'s probe errors other than a refusal, and the state each reports."""
+
+
+@pytest.mark.parametrize("row", list(INCONCLUSIVE_PROBES))
+def test_a_port_probe_neither_accepted_nor_refused_fails_phase_7(
+    row: str,
+    smoke: ModuleType,
+    started_servers: list[subprocess.Popen[bytes]],
+    temp_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    make_error, state = INCONCLUSIVE_PROBES[row]
+    probes: list[tuple[Any, Any]] = []
+    first: list[float] = []
+    real_create_connection = socket.create_connection
+
+    def inconclusive(address: Any, timeout: Any = None, *args: Any, **kwargs: Any) -> Any:
+        probes.append((address, timeout))
+        if not first:
+            first.append(time.monotonic())
+        if time.monotonic() - first[0] < BACKSTOP_S:
+            raise make_error()
+        return real_create_connection(address, timeout, *args, **kwargs)
+
+    monkeypatch.setattr(
+        smoke, "socket", SimpleNamespace(**{**vars(socket), "create_connection": inconclusive})
+    )
+    monkeypatch.setattr(smoke, "REFUSE_WAIT_S", 0.5)
+
+    run = run_main(smoke, capsys)
+
+    port = int(run.value("port"))
+    # Each probe was bounded by the connect limit, which the timeout row stands for.
+    assert probes and set(probes) == {((HOST, port), smoke.CONNECT_TIMEOUT_S)}
+    # The port does refuse (probe_port): only the probes were inconclusive.
+    assert_failed_and_cleaned_up(
+        run,
+        started_servers,
+        temp_root,
+        f"FAIL: phase 7/7 stop: port {port} "
+        f"{state.format(connect_s=smoke.CONNECT_TIMEOUT_S)} after the server was stopped",
+        probe_port=True,
+    )
+
+
+BUSY_S = 0.9
+"""How long a busy temp directory stays busy: past the second attempt, which comes
+``REMOVE_DELAY_S`` (0.5 s) after the first, and not up to the third."""
+
+FREES_UP_LATE = {"busy-twice": 3, "still-there-once": 2, "gone-but-reported-busy": 2}
+"""Each condition of a temp directory that frees up late, and the removal attempts it
+takes at least."""
+
+
+@pytest.mark.parametrize("condition", list(FREES_UP_LATE))
+def test_a_temp_dir_that_frees_up_late_is_still_removed(
+    condition: str,
+    smoke: ModuleType,
+    started_servers: list[subprocess.Popen[bytes]],
+    temp_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[float] = []
+    real_rmtree = shutil.rmtree
+
+    def frees_up_late(path: Any, *args: Any, **kwargs: Any) -> None:
+        calls.append(time.monotonic())
+        if condition == "busy-twice" and (len(calls) <= 2 or calls[-1] - calls[0] < BUSY_S):
+            # A killed process lets go of its files a moment after it exits.
+            raise PermissionError(13, "injected: in use", str(path))
+        if condition == "still-there-once" and len(calls) == 1:
+            return  # delete-pending: rmtree returns, and the directory is still there
+        real_rmtree(path, *args, **kwargs)
+        if condition == "gone-but-reported-busy" and len(calls) == 1:
+            raise PermissionError(13, "injected: removed, but reported in use", str(path))
+
+    monkeypatch.setattr(
+        smoke, "shutil", SimpleNamespace(**{**vars(shutil), "rmtree": frees_up_late})
+    )
+
+    run = run_main(smoke, capsys)
+
+    assert run.code == 0, run.out + run.err
+    assert run.out.splitlines()[-1].startswith("PASS in ")
+    assert len(calls) >= FREES_UP_LATE[condition]  # it tried again until the dir was gone
+    assert sorted(temp_root.iterdir()) == []
+
+
+def test_every_child_starts_without_a_window_and_the_server_in_a_group_of_its_own(
+    smoke: ModuleType,
+    started_servers: list[subprocess.Popen[bytes]],
+    temp_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    launched: list[tuple[str, dict[str, Any]]] = []
+
+    class RecordingPopen(subprocess.Popen[bytes]):
+        def __init__(self, args: Any, *rest: Any, **kwargs: Any) -> None:
+            launched.append((str(args[5]), dict(kwargs)))  # args[5]: the command
+            super().__init__(args, *rest, **kwargs)
+
+    start_children_with(smoke, monkeypatch, RecordingPopen)
+
+    run = run_main(smoke, capsys)
+
+    assert run.code == 0, run.out + run.err
+    assert [command for command, _ in launched] == ["init", "context", "propose", "serve"]
+    for command, kwargs in launched:
+        flags = kwargs.get("creationflags", 0)
+        assert flags & processes.NO_WINDOW == processes.NO_WINDOW, (command, flags)
+        # kill_tree kills a child's process group outside Windows, so each starts its own.
+        assert kwargs.get("start_new_session", "missing") == processes.NEW_SESSION, command
+    group = int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+    assert dict(launched)["serve"]["creationflags"] & group == group
+
+
+def test_a_server_that_answers_only_after_a_second_is_polled_at_the_poll_interval(
+    smoke: ModuleType,
+    started_servers: list[subprocess.Popen[bytes]],
+    temp_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    late = FailingFor(1.0, "injected: not ready yet")
+    tamper_with(smoke, monkeypatch, Tamper("GET", "/health", late))
+
+    run = run_main(smoke, capsys)
+
+    assert run.code == 0, run.out + run.err
+    # Each failed probe was a real request to the server: the smoke retried, once per
+    # poll interval, not in a busy loop.
+    assert 2 <= late.raised <= 1.0 / smoke.POLL_S + 2, late.raised
+    assert sorted(temp_root.iterdir()) == []
+
+
+def test_a_request_the_server_never_answers_times_out_and_fails_its_phase(
+    smoke: ModuleType,
+    started_servers: list[subprocess.Popen[bytes]],
+    temp_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    silent = LoopbackListener(lifetime_s=BACKSTOP_S, hold=True)
+    real_api_url = smoke.api_url
+
+    def api_url(port: int, path: str) -> str:
+        # The pending tips are asked of a listener that accepts and never answers.
+        url: str = real_api_url(silent.port if path == "/tips?status=pending" else port, path)
+        return url
+
+    monkeypatch.setattr(smoke, "api_url", api_url)
+    monkeypatch.setattr(smoke, "HTTP_TIMEOUT_S", 1.0)
+    try:
+        run = run_main(smoke, capsys)
+    finally:
+        silent.close()
+
+    assert silent.accepted == 1
+    # The smoke hung up at its own limit, long before the listener would have.
+    assert len(silent.hung_up_after) == 1, silent.hung_up_after
+    assert silent.hung_up_after[0] < BACKSTOP_S / 2, silent.hung_up_after
+    assert_failed_and_cleaned_up(
+        run,
+        started_servers,
+        temp_root,
+        "FAIL: phase 5/7 review: GET /api/tips?status=pending failed: timed out",
+    )
+
+
+def test_a_proxy_in_the_environment_is_not_used_for_the_local_server(
+    temp_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    proxy = LoopbackListener(lifetime_s=PROXY_LIFETIME_S)  # it hangs up on every request
+    monkeypatch.setenv("http_proxy", f"http://{HOST}:{proxy.port}")
+    for name in ("no_proxy", "NO_PROXY"):
+        monkeypatch.delenv(name, raising=False)
+    # urlopen() keeps the opener it built first. Drop it, so that a smoke falling back
+    # to urlopen() builds one from this environment.
+    urllib.request.install_opener(None)
+    try:
+        smoke = smoke_in(temp_root, monkeypatch)  # loaded with the proxy in the environment
+        with recording_servers(smoke, monkeypatch) as started:
+            run = run_main(smoke, capsys)
+            exited = [process.poll() is not None for process in started]
+    finally:
+        proxy.close()
+        urllib.request.install_opener(None)
+
+    assert run.code == 0, run.out + run.err
+    assert proxy.accepted == 0  # no request went through the proxy
+    assert exited == [True]
+    assert refuses(int(run.value("port")))
+    assert sorted(temp_root.iterdir()) == []

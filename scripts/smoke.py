@@ -23,11 +23,11 @@ proposal -> DB -> API -> print. The seven phases:
    proposal's ``source_ref``. Nothing may print yet. Then ``POST /api/review/approve``.
 6. ``GET /api/print/lists/7`` prints exactly the approved tips, in order, each row's
    fields (``printing.PrintItem``: name, action) equal to the approved tip's.
+7. Stop the server (``taskkill /PID <pid> /T /F``, then ``wait(10)``), check that its
+   port refuses connections, and remove the temp directory, retrying briefly.
 
 A check that fails names where the two sides first differ: the row count, or the row
 number and the drifted field with both values.
-7. Stop the server (``taskkill /PID <pid> /T /F``, then ``wait(10)``), check that its
-   port refuses connections, and remove the temp directory, retrying briefly.
 
 A failure in any phase still stops the server and removes the temp directory; the
 server log's last lines are shown first.
@@ -174,7 +174,6 @@ class Run:
     work_dir: Path
     phase: int = 0
     phase_name: str = "setup"
-    port: int | None = None
     server: subprocess.Popen[bytes] | None = None
     server_stopped: bool = False
     removed: bool = False
@@ -712,7 +711,6 @@ def run_phases(run: Run, args: argparse.Namespace) -> None:
 
     run.begin(4, "serve")
     port = free_port()
-    run.port = port
     say(f"port: {port}")
     server = start_server(data_dir, port, run.log_path)
     run.server = server

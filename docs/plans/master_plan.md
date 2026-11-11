@@ -1398,7 +1398,7 @@ module called from production code is exercised through its caller: the CLI subc
     equivalent ones by line with the reason (for example the `server_stopped` / `removed` flags).
   - The full gate is green.
 - **Depends on:** 7
-- **Status:** BLOCKED (2026-11-09)
+- **Status:** DONE (2026-11-11)
 
 <!-- autofix-applied: 2026-11-08 -->
 ### Step 9: Library and my own tips
