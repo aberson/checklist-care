@@ -57,6 +57,16 @@ RUBRIC_MAX: Final = 2000
 through ``context``. It may run to several lines; the seeded rubrics are under 250
 characters."""
 
+PLACE_MAX: Final = 40
+"""A list's place (plan §3.3), such as ``Coffee Machine``, edited on the Lists page: one
+line, like a tip name. The display title ``<place> — <Audience>`` heads its print sheet
+in 16pt bold, so a place this long still fits on that one line."""
+
+CUE_MAX: Final = 120
+"""A list's cue (plan §3.3, §4.1), the editable "when you are here" rule the skill reads
+through ``context`` to place daily tips: one line; the seeded cues are under 60 characters.
+An empty cue is allowed (the schema's default)."""
+
 PROPOSAL_FILE_MAX_BYTES: Final = 8 * 1024 * 1024
 """The largest proposal file ``propose`` reads. A proposal of ``TIPS_MAX_INVESTIGATE``
 tips with every text field at its limit, every character written as a ``\\uXXXX``

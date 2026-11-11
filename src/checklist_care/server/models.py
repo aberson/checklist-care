@@ -7,7 +7,9 @@ fields (``server/app.py`` turns FastAPI's validation error into that shape).
 Types are strict: ``true`` is not a bucket and ``"3"`` is not an id.
 
 A bucket rubric is the one text that may run to several lines
-(``proposal.rubric_problem``); a bucket title follows the one-line tip-text rule.
+(``proposal.rubric_problem``); a bucket title follows the one-line tip-text rule. A
+list's place follows that rule up to ``PLACE_MAX``, and its cue up to ``CUE_MAX``,
+except that a cue may also be empty (no cue).
 """
 
 from __future__ import annotations
@@ -22,13 +24,17 @@ from checklist_care import proposal
 from checklist_care.errors import ApiNotFoundError
 from checklist_care.limits import (
     ACTION_MAX,
+    AUDIENCES_LIST,
     AUDIENCES_TIP,
     BUCKET_IDS,
     BUCKET_TITLE_MAX,
+    CUE_MAX,
     ID_MAX,
     NAME_MAX,
     NOTE_MAX,
+    PLACE_MAX,
     REASON_MAX,
+    SQLITE_INTEGER_MAX,
     TIP_STATUSES,
 )
 
@@ -65,7 +71,8 @@ RowId = Annotated[StrictInt, Field(ge=1, le=ID_MAX)]
 """A stored row id: a whole number from 1 to ``ID_MAX``."""
 
 ListId = Annotated[int, Path(ge=1, le=ID_MAX)]
-"""A list id in a path (``/lists/{id}/items``, ``/print/lists/{id}``): 1 to ``ID_MAX``."""
+"""A list id in a path (``/lists/{id}``, ``/lists/{id}/items``, ``/print/lists/{id}``): 1 to
+``ID_MAX``."""
 
 
 def no_such_list(list_id: int) -> ApiNotFoundError:
@@ -142,7 +149,8 @@ class TipCreate(BaseModel):
 
 
 class TipIds(BaseModel):
-    """``POST /review/approve`` and ``POST /review/left-out``: ``{tip_ids: [...]}``."""
+    """``{tip_ids: [...]}``: the tips ``POST /review/approve`` and ``POST /review/left-out``
+    change, and the ordered items ``PUT /lists/{id}/items`` stores."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -180,3 +188,58 @@ class BucketPut(BaseModel):
 
         given = self.given()
         return [name for name in BUCKET_FIELDS if name in given and getattr(self, name) is None]
+
+
+def _cue_rule(value: str) -> str:
+    if value == "":
+        return value
+    problem = proposal.text_problem(value, ("CUE_MAX", CUE_MAX))
+    if problem is not None:
+        raise ValueError(problem if value.strip() else 'must not be blank; send "" for no cue')
+    return value
+
+
+ListPlace = Annotated[StrictStr, AfterValidator(_text_rule(("PLACE_MAX", PLACE_MAX)))]
+ListAudience = Annotated[StrictStr, AfterValidator(_one_of(AUDIENCES_LIST))]
+ListCue = Annotated[StrictStr, AfterValidator(_cue_rule)]
+SortOrder = Annotated[StrictInt, Field(ge=0, le=SQLITE_INTEGER_MAX)]
+"""A list's place in the Lists page order: lower first, ties by id."""
+
+LIST_FIELDS: Final = ("place", "audience", "cue", "sort_order")
+"""The fields ``PATCH /lists/{id}`` takes."""
+
+
+class ListCreate(BaseModel):
+    """``POST /lists``: ``{place, audience, cue?}``; a missing cue is empty."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    place: ListPlace
+    audience: ListAudience
+    cue: ListCue = ""
+
+
+class ListPatch(BaseModel):
+    """``PATCH /lists/{id}``: ``{place?, audience?, cue?, sort_order?}``, at least one.
+
+    A field left out keeps its value; none may be null (the route checks that and the
+    empty body, so the 400 names the fields).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    place: ListPlace | None = None
+    audience: ListAudience | None = None
+    cue: ListCue | None = None
+    sort_order: SortOrder | None = None
+
+    def given(self) -> frozenset[str]:
+        """The fields the request named, null or not."""
+
+        return frozenset(self.model_fields_set)
+
+    def null_problems(self) -> list[str]:
+        """The fields the request set to null, in :data:`LIST_FIELDS` order."""
+
+        given = self.given()
+        return [name for name in LIST_FIELDS if name in given and getattr(self, name) is None]

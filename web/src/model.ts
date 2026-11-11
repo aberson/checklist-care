@@ -63,6 +63,30 @@ export interface ListInfo {
   over_capacity: boolean;
 }
 
+/** The body of `POST /api/lists`: a new list, after every other one. An empty cue is allowed. */
+export interface NewList {
+  place: string;
+  audience: string;
+  cue: string;
+}
+
+/** The body of `PATCH /api/lists/{id}`: the changed fields only, at least one, none null. */
+export interface ListPatch {
+  place?: string;
+  audience?: string;
+  cue?: string;
+  sort_order?: number;
+}
+
+/**
+ * What `PATCH /api/lists/{id}` returns: the stored list and, when its audience changed, the tips
+ * the new audience refuses, which the server took off it (in their old order).
+ */
+export interface ListPatchResult {
+  list: ListInfo;
+  removed_tip_ids: number[];
+}
+
 /** A tip on a list, as `GET /api/lists/{id}/items` returns it (pending or approved). */
 export interface ListItem {
   tip_id: number;

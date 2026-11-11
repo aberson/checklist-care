@@ -5,6 +5,8 @@
 // PRINT_CAPACITY + 1 (list 9) approved tips whose lines are exactly LINE_MAX characters.
 // The red anchors stub the sheet payload with page.route to show that both the page count and
 // the overflow flag can fail, down to a row that runs past its line by under a pixel.
+// The Lists page measures each list's rows with the same sheet markup, so a stubbed overlong row
+// is flagged on its list card while the demo's own rows fit there too (Step 11).
 import { expect, test } from "@playwright/test";
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 
@@ -314,6 +316,49 @@ test("red anchor: a row that runs past its line by under a pixel is flagged, and
   await expect(rows.nth(2)).toHaveAttribute("data-overflow", "false");
   const warning = page.locator('[data-warning="overflow"]');
   await expect(warning.locator("li")).toHaveText([over.name]);
+});
+
+test("the Lists page measures each list's rows as its sheet prints them and flags a stubbed overlong row", async ({
+  page,
+  request,
+}) => {
+  const meta = await loadMeta(request);
+  const { LINE_MAX, LINE_SEPARATOR, NAME_MAX } = meta.limits;
+  const listsResponse = await request.get("/api/lists");
+  expect(listsResponse.ok()).toBe(true);
+  const lists = (await listsResponse.json()) as { id: number; title: string }[];
+  const itemsResponse = await request.get(`/api/lists/${COFFEE_LIST}/items`);
+  expect(itemsResponse.ok()).toBe(true);
+  const items = (await itemsResponse.json()) as (PrintItem & { tip_id: number; position: number })[];
+  const control = items[0];
+  if (control === undefined) throw new Error("list 7 has no tips");
+  // The same 80-character all-capitals row the print-sheet red anchor flags.
+  const name = "WASH YOUR HANDS BEFORE EVERY SINGLE MEAL";
+  const action = "SCRUB WITH SOAP AND WARM WATER, THEN DRY THEM".slice(0, LINE_MAX - name.length - LINE_SEPARATOR.length);
+  expect(name).toHaveLength(NAME_MAX);
+  expect(length(`${name}${LINE_SEPARATOR}${action}`)).toBe(LINE_MAX);
+  const long = { ...control, tip_id: 999_999, position: items.length + 1, name, action };
+  await page.route(`**/api/lists/${COFFEE_LIST}/items`, (route) => route.fulfill({ json: [...items, long] }));
+
+  await page.goto("/#/lists");
+  const cards = page.locator(".list-card");
+  await expect(cards).toHaveCount(lists.length);
+  await expect(page.locator('.list-card[data-measured="true"]')).toHaveCount(lists.length);
+
+  const coffee = page.getByRole("listitem", { name: "Coffee Machine — Adults" });
+  const warning = coffee.locator('[data-warning="overflow"]');
+  await expect(warning).toBeVisible();
+  await expect(warning).toContainText(name);
+  await expect(warning).not.toContainText(control.name);
+  const rows = coffee.locator(".list-item");
+  await expect(rows).toHaveCount(items.length + 1);
+  await expect(rows.last()).toHaveAttribute("data-overflow", "true");
+  await expect(rows.first()).toHaveAttribute("data-overflow", "false");
+  // Only that row: the demo's own rows, the two full capacity lists at LINE_MAX included, fit.
+  await expect(page.locator('[data-warning="overflow"]')).toHaveCount(1);
+  await expect(page.locator('.list-item[data-overflow="true"]')).toHaveCount(1);
+  // The measuring copy never shows: not on screen, and not on paper.
+  await expect(coffee.locator(".list-measure")).toBeHidden();
 });
 
 test("the activities sheet shows the Kids+ and Adults groups, one line each and no checkboxes", async ({ page }) => {

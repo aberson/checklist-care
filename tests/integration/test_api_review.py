@@ -708,8 +708,9 @@ def serve_demo(
 def demo_payload(test_client: TestClient) -> dict[str, Any]:
     """What the review, lists and buckets pages load from the demo server: ``/api/meta``
     (without the version, so a release does not change the fixture), the buckets, the
-    sources, the lists, the pending tips, each list's items (keyed by list id) and the
-    approved daily tips on no list (``/api/tips?unplaced=true``)."""
+    sources, the lists, the pending tips, each list's items (keyed by list id), the
+    approved daily tips on no list (``/api/tips?unplaced=true``) and every daily tip
+    (``/api/tips?bucket=1``, the Lists page's "Add a tip" choices)."""
 
     meta = test_client.get("/api/meta").json()
     del meta["version"]
@@ -725,6 +726,7 @@ def demo_payload(test_client: TestClient) -> dict[str, Any]:
             for item in lists
         },
         "unplaced": test_client.get("/api/tips", params={"unplaced": "true"}).json(),
+        "daily": test_client.get("/api/tips", params={"bucket": limits.BUCKET_DAILY}).json(),
     }
 
 

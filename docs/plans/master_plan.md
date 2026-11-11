@@ -1468,6 +1468,7 @@ module called from production code is exercised through its caller: the CLI subc
   - The vitest reorder flow passes.
   - The full gate is green.
 - **Depends on:** 7
+- **Status:** DONE (2026-11-11)
 
 <!-- autofix-applied: 2026-11-08 -->
 ### Step 12: Pasted text and text files

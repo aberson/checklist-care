@@ -14,6 +14,8 @@ export interface MetaLimits {
   REASON_MAX: number;
   BUCKET_TITLE_MAX: number;
   RUBRIC_MAX: number;
+  PLACE_MAX: number;
+  CUE_MAX: number;
   PRINT_CAPACITY: number;
   AUDIENCES_TIP: readonly string[];
   AUDIENCES_LIST: readonly string[];
