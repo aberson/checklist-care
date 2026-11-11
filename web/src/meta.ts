@@ -16,11 +16,13 @@ export interface MetaLimits {
   AUDIENCES_LIST: readonly string[];
   AUDIENCE_KIDS: string;
   AUDIENCE_KIDS_PLUS: string;
+  AUDIENCE_ADULTS: string;
   BUCKET_IDS: readonly number[];
   BUCKET_DAILY: number;
   BUCKET_LEFT_OUT: number;
   TIP_STATUSES: readonly string[];
   TIP_STATUS_APPROVED: string;
+  TIP_STATUS_PENDING: string;
   SOURCE_KIND_YOUTUBE: string;
   SOURCE_KIND_WIKI: string;
   SOURCE_KIND_TEXT: string;

@@ -2,7 +2,7 @@
 // audience and the lists the tip may go on. It is controlled: the caller holds the draft, so
 // a button outside the form (Approve, Left out) can save it. Every limit comes from /api/meta.
 import type { Meta } from "../meta";
-import type { ListInfo, Tip, TipPatch } from "../model";
+import type { ListInfo, PatchResult, Tip, TipPatch } from "../model";
 import { compatible, lineLength, textLength } from "../model";
 
 /** The editable fields of a tip, as the form holds them. */
@@ -57,6 +57,19 @@ export function patchOf(tip: Tip, draft: TipDraft, lists: readonly ListInfo[], m
   if (draft.audience !== tip.audience) patch.audience = draft.audience;
   if (!sameIds(draft.listIds, tip.list_ids)) patch.list_ids = keptListIds(draft, lists, meta);
   return patch;
+}
+
+/** What a save changed beyond the fields themselves: placements dropped, a duplicate mark cleared. */
+export function patchNotice(result: PatchResult, lists: readonly ListInfo[]): string | null {
+  const parts: string[] = [];
+  if (result.removed_placements.length > 0) {
+    const titles = result.removed_placements.map((id) => lists.find((list) => list.id === id)?.title ?? `list ${id}`);
+    parts.push(`Taken off ${titles.join(", ")}: it no longer fits there.`);
+  }
+  if (result.cleared_duplicate_of !== null) {
+    parts.push(`No longer marked as a duplicate of #${result.cleared_duplicate_of}.`);
+  }
+  return parts.length > 0 ? parts.join(" ") : null;
 }
 
 /** Why the draft cannot be saved yet, or null when it can. */

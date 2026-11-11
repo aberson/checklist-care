@@ -1,9 +1,18 @@
-"""``GET /api/tips``, ``PATCH /api/tips/{id}`` and ``DELETE /api/tips/{id}`` (plan §6).
+"""``GET``/``POST /api/tips``, ``PATCH``/``DELETE /api/tips/{id}`` (plan §6).
 
 ``GET /tips`` takes the filters ``status``, ``bucket``, ``audience``, ``source_id``
-and ``unplaced``, all applied together. ``unplaced=true`` keeps only the approved
-daily (bucket-1) tips that are on no list, the Lists page's "Not on any list yet"
-panel; ``unplaced=false`` or no ``unplaced`` adds no filter.
+and ``unplaced``, all applied together; the review inbox and the Library use them.
+``unplaced=true`` keeps only the approved daily (bucket-1) tips that are on no
+list, the Lists page's "Not on any list yet" panel; ``unplaced=false`` or no
+``unplaced`` adds no filter.
+
+``POST /tips`` is the Library's "Add my own tip": ``{name, action, reason?, bucket,
+audience, list_ids?}`` is stored in one transaction as an **approved** tip of the
+seeded manual source (no review needed; ``reason`` may be left out) and put at the
+end of each of ``list_ids`` in the order given, so a basic such as "Brush your
+teeth" prints on its lists at once. The text and line rules are the proposal's;
+a repeated or unknown list is a 400 and a list the tip may not go on (placement
+rules) a 409, with nothing stored. The reply is 201 with the tip.
 
 A tip in a response carries every stored field, its ``list_ids``, its source's ref,
 a ``start_url`` (the YouTube link that starts at ``start_s``, else null) and, for
@@ -35,7 +44,7 @@ from typing import Annotated, Any, Final
 from fastapi import APIRouter, Path, Query, Response
 
 from checklist_care import placement, proposal
-from checklist_care.db import connection
+from checklist_care.db import connection, seed
 from checklist_care.errors import ApiConflictError, ApiNotFoundError, ApiValidationError
 from checklist_care.limits import (
     AUDIENCES_TIP,
@@ -43,13 +52,15 @@ from checklist_care.limits import (
     BUCKET_LEFT_OUT,
     ID_MAX,
     SOURCE_KIND_MANUAL,
+    TIP_STATUS_APPROVED,
     TIP_STATUSES,
 )
 from checklist_care.server import API_PREFIX
 from checklist_care.server.database import DatabaseDep
-from checklist_care.server.models import TipPatch
+from checklist_care.server.models import TipCreate, TipPatch
 from checklist_care.sources import youtube
 from checklist_care.store import lists as list_store
+from checklist_care.store import sources as source_store
 from checklist_care.store import tips as tip_store
 
 router = APIRouter(prefix=f"{API_PREFIX}/tips")
@@ -200,6 +211,48 @@ def _check_list_ids(
     )
     if problems:
         raise ApiConflictError("; ".join(problems), ["list_ids"])
+
+
+def _manual_source_id(conn: sqlite3.Connection) -> int:
+    """The id of the seeded manual source, which every tip of your own belongs to."""
+
+    row = source_store.get_by_ref(conn, seed.MANUAL_SOURCE_REF)
+    if row is None or row.kind != SOURCE_KIND_MANUAL:
+        raise RuntimeError(
+            f"the seeded manual source ({seed.MANUAL_SOURCE_REF!r}) is missing from the "
+            "database; run `checklist-care init`, which adds it again"
+        )
+    return row.id
+
+
+@router.post("", status_code=201)
+def add_tip(body: TipCreate, database: DatabaseDep) -> dict[str, Any]:
+    """Add a tip of your own: approved, manual source, on ``list_ids`` (module docstring)."""
+
+    too_long = proposal.line_problem(body.name, body.action)
+    if too_long is not None:
+        raise ApiValidationError(too_long, ["name", "action"])
+    now = connection.format_timestamp(connection.utc_now())
+    with database.session() as conn, connection.transaction(conn):
+        source_id = _manual_source_id(conn)
+        lists = list_store.lists_by_id(conn)
+        _check_list_ids(body.list_ids, bucket=body.bucket, audience=body.audience, lists=lists)
+        tip_id = tip_store.insert_tip(
+            conn,
+            tip_store.NewTip(
+                name=body.name,
+                action=body.action,
+                reason=body.reason,
+                bucket=body.bucket,
+                audience=body.audience,
+            ),
+            source_id=source_id,
+            status=TIP_STATUS_APPROVED,
+            now=now,
+        )
+        for list_id in body.list_ids:
+            list_store.append_item(conn, list_id, tip_id)
+        return tips_json(conn, [_existing_tip(conn, tip_id)])[0]
 
 
 @router.patch("/{tip_id}")

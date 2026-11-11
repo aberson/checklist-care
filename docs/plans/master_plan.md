@@ -1424,6 +1424,7 @@ module called from production code is exercised through its caller: the CLI subc
   - The vitest add-tip flow passes.
   - The full gate is green.
 - **Depends on:** 7
+- **Status:** DONE (2026-11-11)
 
 <!-- autofix-applied: 2026-11-08 -->
 ### Step 10: Editable bucket rubrics

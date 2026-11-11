@@ -107,6 +107,25 @@ class TipPatch(BaseModel):
         return [name for name in NOT_NULL_FIELDS if name in given and getattr(self, name) is None]
 
 
+class TipCreate(BaseModel):
+    """``POST /tips``: a tip of your own (plan §6, "Add my own tip").
+
+    ``name``, ``action``, ``bucket`` and ``audience`` are required; ``reason`` is
+    optional (a manual tip may have none); ``list_ids`` names the lists to put it
+    on, in order, and defaults to none. The route stores it approved under the
+    manual source.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: TipName
+    action: TipAction
+    reason: TipReason | None = None
+    bucket: Bucket
+    audience: TipAudience
+    list_ids: list[RowId] = Field(default_factory=list)
+
+
 class TipIds(BaseModel):
     """``POST /review/approve`` and ``POST /review/left-out``: ``{tip_ids: [...]}``."""
 

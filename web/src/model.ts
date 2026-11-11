@@ -111,6 +111,19 @@ export interface TipPatch {
   list_ids?: number[];
 }
 
+/**
+ * The body of `POST /api/tips` ("Add my own tip"): the server stores it approved under the
+ * manual source and puts it on `list_ids` in that order. `reason` is optional.
+ */
+export interface NewTip {
+  name: string;
+  action: string;
+  reason?: string;
+  bucket: number;
+  audience: string;
+  list_ids: number[];
+}
+
 /** What `PATCH /api/tips/{id}` returns. */
 export interface PatchResult {
   tip: Tip;

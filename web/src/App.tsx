@@ -18,7 +18,7 @@ function Page({ page, meta }: { page: PageName; meta: Meta | null }) {
     case "review":
       return <ReviewPage meta={meta} />;
     case "library":
-      return <LibraryPage />;
+      return <LibraryPage meta={meta} />;
     case "lists":
       return <ListsPage meta={meta} />;
     case "buckets":

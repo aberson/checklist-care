@@ -440,3 +440,129 @@ button.badge {
   margin: 0 0 0.25rem;
   font-size: 1.1rem;
 }
+
+/* --- Library ------------------------------------------------------------------------ */
+
+.library {
+  max-width: 64rem;
+}
+
+.add-tip-closed {
+  margin: 1rem 0;
+}
+
+.add-tip-closed button,
+.library-filters button {
+  padding: 0.3rem 0.85rem;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #f6f8fa;
+  color: #1f2328;
+  font: inherit;
+  cursor: pointer;
+}
+
+.add-tip-closed button.primary {
+  border-color: #1a7f37;
+  background: #1f883d;
+  color: #ffffff;
+}
+
+.library-filters button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.add-tip {
+  display: grid;
+  gap: 0.5rem;
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid #1a7f37;
+  border-radius: 8px;
+  background: #f6fff8;
+}
+
+.add-tip h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.library-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1.25rem;
+  margin: 1rem 0 0.5rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  background: #f6f8fa;
+}
+
+.library-filters .filter {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.library-filters label,
+.move-control label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.library-filters select,
+.move-control select {
+  padding: 0.3rem 0.45rem;
+  border: 1px solid #8c959f;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.library-summary {
+  font-weight: 600;
+}
+
+.library-tips {
+  padding: 0;
+}
+
+.library-tips[aria-busy="true"] {
+  opacity: 0.6;
+}
+
+.badge-status {
+  border-color: #8c959f;
+}
+
+.badge-pending {
+  border-color: #9a6700;
+  color: #7d4e00;
+  font-weight: 600;
+}
+
+.badge-source {
+  color: #424a53;
+}
+
+.move-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tip-actions button.danger {
+  border-color: #cf222e;
+  color: #a40e26;
+}
+
+.confirm-delete {
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 4px solid #cf222e;
+  background: #ffebe9;
+}
+
+.confirm-delete p {
+  margin: 0;
+}

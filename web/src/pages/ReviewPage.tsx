@@ -6,7 +6,7 @@
 // POST /api/review/left-out.
 import { useCallback, useEffect, useId, useState } from "react";
 import { apiGet, apiSend, errorText } from "../api";
-import { draftOf, draftProblem, patchOf, TipEditor } from "../components/TipEditor";
+import { draftOf, draftProblem, patchNotice, patchOf, TipEditor } from "../components/TipEditor";
 import type { TipDraft } from "../components/TipEditor";
 import type { Meta } from "../meta";
 import type { ListInfo, PatchResult, SourceInfo, Tip, TipBrief } from "../model";
@@ -424,18 +424,6 @@ function TipCard({ tip, lists, sources, meta, inbox, onReplace, onRemove, onEdit
       </div>
     </li>
   );
-}
-
-function patchNotice(result: PatchResult, lists: readonly ListInfo[]): string | null {
-  const parts: string[] = [];
-  if (result.removed_placements.length > 0) {
-    const titles = result.removed_placements.map((id) => lists.find((list) => list.id === id)?.title ?? `list ${id}`);
-    parts.push(`Taken off ${titles.join(", ")}: it no longer fits there.`);
-  }
-  if (result.cleared_duplicate_of !== null) {
-    parts.push(`No longer marked as a duplicate of #${result.cleared_duplicate_of}.`);
-  }
-  return parts.length > 0 ? parts.join(" ") : null;
 }
 
 interface OriginalBadgeProps {
