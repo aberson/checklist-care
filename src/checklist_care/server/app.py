@@ -43,6 +43,7 @@ from checklist_care.server import (
     API_PREFIX,
     BUILD_COMMAND,
     DIST_DIR,
+    routes_buckets,
     routes_lists,
     routes_meta,
     routes_print,
@@ -62,6 +63,7 @@ ROUTERS: Final = (
     routes_tips,
     routes_review,
     routes_lists,
+    routes_buckets,
     routes_sources,
     routes_print,
 )

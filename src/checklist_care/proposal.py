@@ -58,6 +58,7 @@ from checklist_care.limits import (
     PROPOSAL_HOSTS,
     PROPOSAL_MODES,
     REASON_MAX,
+    RUBRIC_MAX,
     SOURCE_KIND_MANUAL,
     SOURCE_KIND_YOUTUBE,
     SOURCE_MODE_INVESTIGATE,
@@ -115,6 +116,8 @@ _SHA256_PATTERN: Final = re.compile(r"[0-9a-fA-F]{64}")
 _UTF16_BOMS: Final = (b"\xff\xfe", b"\xfe\xff")
 _LINE_BREAKING: Final = frozenset({"Cc", "Zl", "Zp"})
 """Unicode categories that break or control a one-line text: controls and separators."""
+RUBRIC_WHITESPACE: Final = frozenset({"\n", "\t"})
+"""The only :data:`_LINE_BREAKING` characters a bucket rubric may hold (:func:`rubric_problem`)."""
 _SURROGATE: Final = re.compile("[\ud800-\udfff]")
 """Unicode category Cs. In a string decoded from JSON a surrogate is always unpaired:
 a valid ``\\ud83d\\ude00`` escape pair decodes to one character."""
@@ -160,6 +163,35 @@ def line_problem(name: str, action: str) -> str | None:
         f"the printed line `name{LINE_SEPARATOR}action` is {length} characters; LINE_MAX is "
         f"{LINE_MAX}; shorten the action (or the name)"
     )
+
+
+# --- the bucket rubric rule, for the API ---------------------------------------------
+
+
+def rubric_problem(value: str) -> str | None:
+    """Why ``value`` is not a valid bucket rubric, or None when it is.
+
+    A rubric (``PUT /api/buckets/{id}``) is non-blank and at most ``RUBRIC_MAX``
+    characters. Unlike a tip text it may run to several lines: it may hold
+    :data:`RUBRIC_WHITESPACE` (line feeds and tabs) but no other character that
+    :func:`text_problem` refuses (a carriage return, another control code, a Unicode
+    line or paragraph separator) and no unpaired surrogate. The API stores the text
+    exactly as given, which is what ``checklist-care context`` prints for the skill.
+    """
+
+    if not value.strip():
+        return "must not be empty"
+    if len(value) > RUBRIC_MAX:  # first, so the character scan below stays short
+        return f"is {len(value)} characters; RUBRIC_MAX is {RUBRIC_MAX}; shorten it"
+    for char in value:
+        if char not in RUBRIC_WHITESPACE and unicodedata.category(char) in _LINE_BREAKING:
+            return (
+                "may hold line breaks (LF) and tabs, but no carriage return, other control "
+                f"code or Unicode line separator (U+{ord(char):04X})"
+            )
+    if _has_surrogate(value):
+        return UNPAIRED_SURROGATE
+    return None
 
 
 # --- problems ------------------------------------------------------------------------

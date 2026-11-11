@@ -706,16 +706,17 @@ def serve_demo(
 
 
 def demo_payload(test_client: TestClient) -> dict[str, Any]:
-    """What the review and lists pages load from the demo server: ``/api/meta``
-    (without the version, so a release does not change the fixture), the sources, the
-    lists, the pending tips, each list's items (keyed by list id) and the approved
-    daily tips on no list (``/api/tips?unplaced=true``)."""
+    """What the review, lists and buckets pages load from the demo server: ``/api/meta``
+    (without the version, so a release does not change the fixture), the buckets, the
+    sources, the lists, the pending tips, each list's items (keyed by list id) and the
+    approved daily tips on no list (``/api/tips?unplaced=true``)."""
 
     meta = test_client.get("/api/meta").json()
     del meta["version"]
     lists = test_client.get("/api/lists").json()
     return {
         "meta": meta,
+        "buckets": test_client.get("/api/buckets").json(),
         "sources": test_client.get("/api/sources").json(),
         "lists": lists,
         "tips": test_client.get("/api/tips", params={"status": "pending"}).json(),

@@ -566,3 +566,65 @@ button.badge {
 .confirm-delete p {
   margin: 0;
 }
+
+/* --- Buckets ------------------------------------------------------------------------ */
+
+.buckets {
+  max-width: 64rem;
+}
+
+.bucket-cards {
+  margin: 1rem 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 1rem;
+}
+
+.bucket-card {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  background: #f6f8fa;
+}
+
+.bucket-card h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.bucket-card .field {
+  display: grid;
+  grid-template-columns: 7rem 1fr auto;
+  align-items: start;
+  gap: 0.5rem;
+}
+
+.bucket-card label {
+  padding-top: 0.3rem;
+  font-weight: 600;
+}
+
+.bucket-card input,
+.bucket-card textarea {
+  padding: 0.3rem 0.45rem;
+  border: 1px solid #8c959f;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.bucket-card textarea {
+  min-height: 5rem;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.bucket-card .field-count {
+  padding-top: 0.3rem;
+}
+
+.bucket-card .tip-actions {
+  margin-top: 0.25rem;
+}

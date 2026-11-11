@@ -36,9 +36,9 @@ TIPS_MAX_EXTRACT: Final = 60
 TIPS_MAX_INVESTIGATE: Final = 300
 """Proposal size caps per mode. Zero tips is allowed."""
 
-# Caps on the optional free-text tip fields and on the proposal file. Plan §4.2
-# states none; these bound what an untrusted proposal can store, well above
-# what a real tip needs.
+# Caps on the optional free-text tip fields, the editable bucket texts and the
+# proposal file. Plan §4.2 states none; these bound what an untrusted proposal or
+# request can store, well above what a real tip or rubric needs.
 
 LOCATOR_MAX: Final = 200
 """A tip's ``locator``: the original chapter title or wiki section heading."""
@@ -48,6 +48,14 @@ NOTE_MAX: Final = 300
 
 EVIDENCE_URL_MAX: Final = 2048
 """A tip's ``evidence_url``: the http(s) page the tip came from."""
+
+BUCKET_TITLE_MAX: Final = 40
+"""A bucket's title (plan §3.4), edited on the Buckets page: one line, like a tip name."""
+
+RUBRIC_MAX: Final = 2000
+"""A bucket's rubric (plan §3.4), edited on the Buckets page and read by the skill
+through ``context``. It may run to several lines; the seeded rubrics are under 250
+characters."""
 
 PROPOSAL_FILE_MAX_BYTES: Final = 8 * 1024 * 1024
 """The largest proposal file ``propose`` reads. A proposal of ``TIPS_MAX_INVESTIGATE``

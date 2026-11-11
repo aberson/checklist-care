@@ -10,7 +10,8 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Final
 
-from checklist_care.db.connection import format_timestamp, transaction, utc_now
+from checklist_care.db import connection
+from checklist_care.db.connection import format_timestamp, transaction
 from checklist_care.limits import (
     AUDIENCE_ADULTS,
     AUDIENCE_KIDS,
@@ -94,9 +95,11 @@ LISTS: Final = (
 
 
 def seed_database(conn: sqlite3.Connection, *, now: str | None = None) -> None:
-    """Insert the seed rows that are missing, in one transaction."""
+    """Insert the seed rows that are missing, in one transaction. Without ``now`` the
+    bucket timestamps are ``connection.utc_now()``, looked up at call time so a test
+    that replaces the clock controls them (the ``serve --demo`` database)."""
 
-    stamp = format_timestamp(utc_now()) if now is None else now
+    stamp = format_timestamp(connection.utc_now()) if now is None else now
     with transaction(conn):
         conn.executemany(
             "INSERT OR IGNORE INTO bucket (id, title, rubric, updated_at) VALUES (?, ?, ?, ?)",

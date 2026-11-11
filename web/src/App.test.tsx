@@ -5,7 +5,7 @@ import { ApiError, apiGet } from "./api";
 import { App } from "./App";
 import { forgetMeta, loadMeta } from "./meta";
 import { DEFAULT_PAGE, NAV, parseRoute } from "./router";
-import { demoRoutes, get, META, stubApi } from "./testing/api";
+import { DEMO_BUCKETS, demoRoutes, get, META, stubApi } from "./testing/api";
 
 function stubFetch(status: number, body: unknown) {
   const fetchMock = vi.fn((_url: string, _init?: RequestInit) =>
@@ -62,6 +62,7 @@ describe("App", () => {
     for (const [hash, heading, label] of [
       ["#/library", "Library", "Library"],
       ["#/lists", "Lists", "Lists"],
+      ["#/buckets", "Buckets", "Buckets"],
       ["#/review", "Review inbox", "Review"],
     ] as const) {
       await goTo(hash);
@@ -74,20 +75,23 @@ describe("App", () => {
     }
   });
 
-  it("shows the bucket titles from /api/meta, fetched once", async () => {
+  it("shows the buckets page and fetches /api/meta once", async () => {
     const sent = stubApi(...demoRoutes());
     window.location.hash = "#/buckets";
     render(<App />);
     const list = await screen.findByRole("list", { name: "Buckets" });
-    expect(within(list).getAllByRole("listitem").map((item) => item.textContent)).toEqual(
-      META.buckets.map((bucket) => bucket.title),
+    expect(within(list).getAllByRole("heading", { level: 2 }).map((item) => item.textContent)).toEqual(
+      META.buckets.map((bucket) => `${bucket.id}. ${bucket.title}`),
+    );
+    expect(within(list).getAllByLabelText("Rubric").map((box) => (box as HTMLTextAreaElement).value)).toEqual(
+      DEMO_BUCKETS.map((bucket) => bucket.rubric),
     );
     await goTo("#/review");
     await goTo("#/buckets");
     await screen.findByRole("list", { name: "Buckets" });
-    // The review inbox loads its own data; /api/meta is fetched once for the whole app.
+    // Each page loads its own data on every visit; /api/meta is fetched once for the whole app.
     expect(sent.filter((request) => request.url === "/api/meta")).toHaveLength(1);
-    expect(sent[0]?.url).toBe("/api/meta");
+    expect(sent.filter((request) => request.url === "/api/buckets")).toHaveLength(2);
   });
 
   it("shows an unknown hash as not found, with a link to the review inbox", async () => {

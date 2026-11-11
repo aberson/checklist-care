@@ -5,6 +5,9 @@ from ``proposal.text_problem``, so a request is held to exactly the rules a
 proposal is. A request that fails them is a 400 ``CC_E_VALIDATION`` naming the
 fields (``server/app.py`` turns FastAPI's validation error into that shape).
 Types are strict: ``true`` is not a bucket and ``"3"`` is not an id.
+
+A bucket rubric is the one text that may run to several lines
+(``proposal.rubric_problem``); a bucket title follows the one-line tip-text rule.
 """
 
 from __future__ import annotations
@@ -21,6 +24,7 @@ from checklist_care.limits import (
     ACTION_MAX,
     AUDIENCES_TIP,
     BUCKET_IDS,
+    BUCKET_TITLE_MAX,
     ID_MAX,
     NAME_MAX,
     NOTE_MAX,
@@ -37,6 +41,13 @@ def _text_rule(limit: tuple[str, int]) -> Callable[[str], str]:
         return value
 
     return check
+
+
+def _rubric_rule(value: str) -> str:
+    problem = proposal.rubric_problem(value)
+    if problem is not None:
+        raise ValueError(problem)
+    return value
 
 
 def _one_of[Member: (str, int)](members: Sequence[Member]) -> Callable[[Member], Member]:
@@ -61,6 +72,10 @@ def no_such_list(list_id: int) -> ApiNotFoundError:
     """The 404 for a :data:`ListId` that names no list."""
 
     return ApiNotFoundError(f"there is no list #{list_id}")
+
+
+BucketId = Annotated[int, Path(ge=1, le=ID_MAX)]
+"""A bucket id in a path (``/buckets/{id}``): 1 to ``ID_MAX``; only 1-4 exist."""
 
 
 TipName = Annotated[StrictStr, AfterValidator(_text_rule(("NAME_MAX", NAME_MAX)))]
@@ -132,3 +147,36 @@ class TipIds(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tip_ids: list[RowId]
+
+
+BucketTitle = Annotated[
+    StrictStr, AfterValidator(_text_rule(("BUCKET_TITLE_MAX", BUCKET_TITLE_MAX)))
+]
+BucketRubric = Annotated[StrictStr, AfterValidator(_rubric_rule)]
+
+BUCKET_FIELDS: Final = ("title", "rubric")
+"""The fields ``PUT /buckets/{id}`` takes."""
+
+
+class BucketPut(BaseModel):
+    """``PUT /buckets/{id}``: ``{title?, rubric?}``, at least one, each non-empty.
+
+    A field left out keeps its value; neither may be null (the route checks that and
+    the empty body, so the 400 names the fields).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: BucketTitle | None = None
+    rubric: BucketRubric | None = None
+
+    def given(self) -> frozenset[str]:
+        """The fields the request named, null or not."""
+
+        return frozenset(self.model_fields_set)
+
+    def null_problems(self) -> list[str]:
+        """The fields the request set to null, in :data:`BUCKET_FIELDS` order."""
+
+        given = self.given()
+        return [name for name in BUCKET_FIELDS if name in given and getattr(self, name) is None]
