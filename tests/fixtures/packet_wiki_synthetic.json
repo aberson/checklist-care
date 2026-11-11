@@ -1,0 +1,28 @@
+{
+  "schema": "checklist-care.packet/1",
+  "source_ref": "wiki:en:The_Happiness_Hypothesis",
+  "kind": "wiki",
+  "url": "https://en.wikipedia.org/wiki/The_Happiness_Hypothesis",
+  "title": "The Happiness Hypothesis",
+  "channel": null,
+  "duration_s": null,
+  "fetched_at": "2026-11-08T12:00:00Z",
+  "transcript": null,
+  "chapters": [],
+  "text": "The Happiness Hypothesis is a synthetic placeholder article written for checklist-care tests. None of this text comes from Wikipedia or from the book; every sentence is self-written filler, so the fixture can live in the repository.\nIt keeps the shape of a plain-text extract: a lead, eleven chapter sections and a reception section.\n\n\n== Ch.1: Placeholder idea one ==\nSynthetic chapter one describes a made-up idea in plain placeholder words, such as noticing a small habit while the kettle boils or by the front door.\nA second paragraph keeps chapter one longer than one line; the words café and naïve check that the packet stays UTF-8.\n\n\n== Ch.2: Placeholder idea two ==\nSynthetic chapter two describes a made-up idea in plain placeholder words, such as noticing a small habit while the kettle boils or by the front door.\nA second paragraph keeps chapter two longer than one line; the words café and naïve check that the packet stays UTF-8.\n\n\n== Ch.3: Placeholder idea three ==\nSynthetic chapter three describes a made-up idea in plain placeholder words, such as noticing a small habit while the kettle boils or by the front door.\nA second paragraph keeps chapter three longer than one line; the words café and naïve check that the packet stays UTF-8.\n\n\n== Ch.4: Placeholder idea four ==\nSynthetic chapter four describes a made-up idea in plain placeholder words, such as noticing a small habit while the kettle boils or by the front door.\nA second paragraph keeps chapter four longer than one line; the words café and naïve check that the packet stays UTF-8.\n\n\n== Ch.5: Placeholder idea five ==\nSynthetic chapter five describes a made-up idea in plain placeholder words, such as noticing a small habit while the kettle boils or by the front door.\nA second paragraph keeps chapter five longer than one line; the words café and naïve check that the packet stays UTF-8.\n\n\n== Ch.6: Placeholder idea six ==\nSynthetic chapter six describes a made-up idea in plain placeholder words, such as noticing a small habit while the kettle boils or by the front door.\nA second paragraph keeps chapter six longer than one line; the words café and naïve check that the packet stays UTF-8.\n\n\n== Ch.7: Placeholder idea seven ==\nSynthetic chapter seven describes a made-up idea in plain placeholder words, such as noticing a small habit while the kettle boils or by the front door.\nA second paragraph keeps chapter seven longer than one line; the words café and naïve check that the packet stays UTF-8.\n\n\n== Ch.8: Placeholder idea eight ==\nSynthetic chapter eight describes a made-up idea in plain placeholder words, such as noticing a small habit while the kettle boils or by the front door.\nA second paragraph keeps chapter eight longer than one line; the words café and naïve check that the packet stays UTF-8.\n\n\n== Ch.9: Placeholder idea nine ==\nSynthetic chapter nine describes a made-up idea in plain placeholder words, such as noticing a small habit while the kettle boils or by the front door.\nA second paragraph keeps chapter nine longer than one line; the words café and naïve check that the packet stays UTF-8.\n\n\n== Ch.10: Placeholder idea ten ==\nSynthetic chapter ten describes a made-up idea in plain placeholder words, such as noticing a small habit while the kettle boils or by the front door.\nA second paragraph keeps chapter ten longer than one line; the words café and naïve check that the packet stays UTF-8.\n\n\n== Ch.11: Placeholder idea eleven ==\nSynthetic chapter eleven describes a made-up idea in plain placeholder words, such as noticing a small habit while the kettle boils or by the front door.\nA second paragraph keeps chapter eleven longer than one line; the words café and naïve check that the packet stays UTF-8.\n\n\n== Reception ==\nSynthetic reception text: invented reviewers found the placeholder chapters easy to read.",
+  "sections": [
+    {"heading": "Ch.1: Placeholder idea one", "level": 2, "offset": 336},
+    {"heading": "Ch.2: Placeholder idea two", "level": 2, "offset": 641},
+    {"heading": "Ch.3: Placeholder idea three", "level": 2, "offset": 946},
+    {"heading": "Ch.4: Placeholder idea four", "level": 2, "offset": 1257},
+    {"heading": "Ch.5: Placeholder idea five", "level": 2, "offset": 1565},
+    {"heading": "Ch.6: Placeholder idea six", "level": 2, "offset": 1873},
+    {"heading": "Ch.7: Placeholder idea seven", "level": 2, "offset": 2178},
+    {"heading": "Ch.8: Placeholder idea eight", "level": 2, "offset": 2489},
+    {"heading": "Ch.9: Placeholder idea nine", "level": 2, "offset": 2800},
+    {"heading": "Ch.10: Placeholder idea ten", "level": 2, "offset": 3108},
+    {"heading": "Ch.11: Placeholder idea eleven", "level": 2, "offset": 3414},
+    {"heading": "Reception", "level": 2, "offset": 3729}
+  ],
+  "warnings": []
+}

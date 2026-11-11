@@ -34,7 +34,7 @@ from checklist_care.errors import (
 )
 from checklist_care.limits import BUCKET_IDS, TIP_STATUS_PENDING
 from checklist_care.server import DAILY_PORT, HOST
-from checklist_care.sources import packet, youtube
+from checklist_care.sources import packet, wiki, youtube
 from checklist_care.sources import text as text_source
 from checklist_care.store import sources as source_store
 
@@ -106,13 +106,20 @@ def build_parser() -> argparse.ArgumentParser:
         parents=[common],
         help="fetch a source into a packet under <data-dir>/packets/",
         description=(
-            "Fetch a YouTube video's transcript and chapters, or the text of a text file, "
-            "into a source packet. Put the URL in single quotes in a shell; a file path too."
+            "Fetch a YouTube video's transcript and chapters, a Wikipedia article's text "
+            "and sections, or the text of a text file, into a source packet. Put the URL "
+            "in single quotes in a shell; a file path too."
         ),
     )
     source = fetch.add_mutually_exclusive_group(required=True)
     source.add_argument(
-        "url", metavar="URL", nargs="?", help="a YouTube video URL or its 11-character id"
+        "url",
+        metavar="URL",
+        nargs="?",
+        help=(
+            "a YouTube video URL or its 11-character id, or a Wikipedia article URL "
+            "(https://<lang>.wikipedia.org/wiki/<Title>)"
+        ),
     )
     source.add_argument(
         "--text-file",
@@ -343,45 +350,70 @@ def _cmd_backup(args: argparse.Namespace, data_dir: paths.DataDir) -> int:
     return EXIT_OK
 
 
+FetchedSource = tuple[packet.Packet, str | None]
+"""What one fetch gives ``_fetch_source``: the packet and its ``source.revision``."""
+
+
 def _cmd_fetch(args: argparse.Namespace, data_dir: paths.DataDir) -> int:
     if args.text_file is not None:
         # The file is read and checked first: its ref is the hash of its text.
         text = text_source.read_text_file(Path(args.text_file))
         title: str | None = args.title
 
-        def make_text_packet(fetched_at: str) -> packet.Packet:
-            return text_source.build_packet(text, title=title, fetched_at=fetched_at)
+        def make_text_source(fetched_at: str) -> FetchedSource:
+            # No revision: a changed text is a new source (``text_source.revision``).
+            return text_source.build_packet(text, title=title, fetched_at=fetched_at), None
 
-        return _fetch_source(data_dir, text.ref, make_text_packet, text_source.revision)
+        return _fetch_source(data_dir, make_text_source, ref=text.ref)
+
+    if wiki.is_wikipedia_url(args.url):
+        article = wiki.parse_wiki_url(args.url)
+
+        def make_wiki_source(fetched_at: str) -> FetchedSource:
+            fetched = wiki.fetch_article(article, fetched_at=fetched_at)
+            return fetched.packet, fetched.revision
+
+        # The ref holds the canonical title after redirects, which only the answer
+        # gives, so a reviewed article is refused after the request, before writing.
+        return _fetch_source(data_dir, make_wiki_source, ref=None)
 
     video_id = youtube.parse_video_id(args.url)
 
-    def make_video_packet(fetched_at: str) -> packet.Packet:
-        return youtube.fetch_packet(video_id, fetched_at=fetched_at)
+    def make_video_source(fetched_at: str) -> FetchedSource:
+        fetched = youtube.fetch_packet(video_id, fetched_at=fetched_at)
+        return fetched, youtube.revision(fetched)
 
-    return _fetch_source(
-        data_dir, youtube.source_ref(video_id), make_video_packet, youtube.revision
-    )
+    return _fetch_source(data_dir, make_video_source, ref=youtube.source_ref(video_id))
 
 
 def _fetch_source(
     data_dir: paths.DataDir,
-    ref: str,
-    make_packet: Callable[[str], packet.Packet],
-    revision: Callable[[packet.Packet], str | None],
+    make_source: Callable[[str], FetchedSource],
+    *,
+    ref: str | None,
 ) -> int:
-    """Fetch source ``ref`` with ``make_packet(fetched_at)``, then write its packet and
-    upsert its row together, and print the four ``fetch`` lines (plan §4.4)."""
+    """Fetch a source with ``make_source(fetched_at)``, then write its packet and
+    upsert its row together, and print the four ``fetch`` lines (plan §4.4).
+
+    ``ref`` is the source's ref when the input alone gives it (YouTube, text); a
+    reviewed source is then refused before any network call. A Wikipedia ref is known
+    only from the answer (``ref=None``). Either way the packet's ``source_ref`` is
+    checked again under the write lock, so a reviewed source is never written.
+    """
 
     _require_database(data_dir)
     paths.ensure_layout(data_dir.path)
-    target = packet.packet_path(data_dir.path, ref)
     with closing(connection.connect(data_dir.db_path)) as conn:
         # Refuse a reviewed source before any network call, and again under the
         # write lock in case `propose` reviewed it while the fetch ran.
-        source_store.refuse_reviewed(conn, ref)
+        if ref is not None:
+            source_store.refuse_reviewed(conn, ref)
         fetched_at = connection.format_timestamp(connection.utc_now())
-        fetched = make_packet(fetched_at)
+        fetched, revision = make_source(fetched_at)
+        if ref is not None and fetched.source_ref != ref:
+            raise RuntimeError(f"fetched {fetched.source_ref}, expected {ref}")
+        ref = fetched.source_ref
+        target = packet.packet_path(data_dir.path, ref)
         # The packet goes into place as the transaction's last step, and a failed
         # COMMIT puts the old one back, so packet and source row change together.
         with packet.PacketSwap(target, fetched) as swap:
@@ -393,7 +425,7 @@ def _fetch_source(
                     ref=ref,
                     title=fetched.title,
                     url=fetched.url,
-                    revision=revision(fetched),
+                    revision=revision,
                     fetched_at=fetched_at,
                 )
                 swap.install()

@@ -1012,7 +1012,8 @@ def test_a_source_reviewed_during_the_fetch_is_refused_and_not_overwritten(
     [
         "https://www.youtube.com/@ChillDudeExplains",
         "https://vimeo.com/123456789",
-        "https://en.wikipedia.org/wiki/The_Happiness_Hypothesis",
+        # A Wikipedia URL is a wiki source (test_cli_fetch_wiki.py); a lookalike host is not.
+        "https://en.wikipedia.org.evil.example/wiki/The_Happiness_Hypothesis",
     ],
 )
 def test_an_unsupported_url_exits_4_and_writes_nothing(
