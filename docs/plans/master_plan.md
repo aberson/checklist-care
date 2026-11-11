@@ -1356,6 +1356,16 @@ module called from production code is exercised through its caller: the CLI subc
   7. Stop the server with `taskkill /PID <pid> /T /F` and `proc.wait(10)`. Assert the port
      refuses connections, then remove the temp dir (retrying briefly).
   This catches producer/consumer drift across fetch → packet → proposal → DB → API → print.
+
+  **Resume (2026-11-10):** rounds 1-3 (BLOCKED 2026-11-09) are pre-landed on master at `2ff19ee`
+  (`scripts/smoke.py`, `tests/integration/test_smoke_script.py`, full gate green). Complete the
+  step from HEAD; do not rebuild `smoke.py`. Rounds 1-3 anchored only checks fed bad data, so the
+  smoke's safety actions (kills, retries, waits, launch flags) and its already-satisfied guards
+  could be deleted without failing a test. This resume adds the second anchor kind in Done when:
+  each anchor creates the condition a guard exists for, runs through `smoke.main()`, and asserts
+  world state. Also describe that second kind in the test module docstring, and delete the unused
+  `Run.port` field. On Windows, check a pid's liveness with `OpenProcess` + `GetExitCodeProcess`
+  (`STILL_ACTIVE`); `os.kill(pid, 0)` terminates the process there.
 - **Type:** code
 - **Issue:** #8
 - **Flags:** --reviewers code --isolation worktree
@@ -1366,8 +1376,29 @@ module called from production code is exercised through its caller: the CLI subc
   - The offline smoke exits 0 inside the full gate in under 120 s, with no `checklist-care`
     process left listening and no temp dir left behind.
   - `--live` exists; it runs in M1.
+  - Every safety action and guard in `scripts/smoke.py` has a red anchor that runs through
+    `smoke.main()`, creates the condition the guard exists for, and asserts world state (a pid, a
+    port, a directory, the Popen arguments), not only the FAIL text:
+    - CLI timeout, and Ctrl+C while the smoke waits on a command: the command is a stand-in that
+      starts a child of its own and writes both pids; after `main()` both pids are dead. The
+      grandchild is required because the venv launcher's job object kills the interpreter on a
+      plain kill, so only a grandchild tells a tree kill from `process.kill()`. This replaces the
+      0.01 s timeout test, whose limit fires before any process tree exists.
+    - Phase 7's port check: a listener bound on the server's port after the real stop fails
+      phase 7 with `port <N> accepts connections after the server was stopped`; a listener that
+      closes after 1 s still passes.
+    - Temp-dir removal: `rmtree` raising `PermissionError` twice, and `rmtree` returning once
+      with the directory still present, both end in PASS with the directory gone.
+    - Every child starts with `CREATE_NO_WINDOW`, and `serve` also with
+      `CREATE_NEW_PROCESS_GROUP`.
+    - `port_state` reports a `TimeoutError` and any other `OSError` as not refused.
+  - A call-site mutation sweep of `scripts/smoke.py` at the DONE gate leaves no surviving mutant
+    except equivalent ones. The sweep removes or neuters, one at a time, each kill, retry, wait,
+    guard and `creationflags` argument. The step report lists each mutant's result, and lists the
+    equivalent ones by line with the reason (for example the `server_stopped` / `removed` flags).
   - The full gate is green.
 - **Depends on:** 7
+- **Status:** BLOCKED (2026-11-09)
 
 <!-- autofix-applied: 2026-11-08 -->
 ### Step 9: Library and my own tips
