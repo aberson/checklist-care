@@ -12,9 +12,26 @@ titles and expectations. The criterion logic lives here, keyed by id
 
 **Verdicts.** ``PASS`` (exit 0) when every scored hard criterion holds; ``FAIL`` (exit 1)
 when any fails; ``ABORT`` (exit 6, ``CC_EVAL_ABORT``) when the input cannot give a
-verdict. Soft criteria are reported and never change the verdict. An abort is never a
-warning: the scorer does not fall back on a default, skip a label it cannot read or
-score a source it cannot verify.
+verdict; ``REPORTED (degraded)`` (exit 0, never a pass) when no abort holds and a scored
+proposal says ``"degraded": true``: the criteria are still evaluated and reported, and
+the verdict is neither PASS nor FAIL. Soft criteria are reported and never change the
+verdict, and so are operator criteria (INV-6), whose verdict the operator records. An
+abort is never a warning: the scorer does not fall back on a default, skip a label it
+cannot read or score a source it cannot verify.
+
+**Labelled sources** come in three kinds. A source with a ``ref`` is graded by the
+per-source criteria; ``"harm_titled": true`` marks a video whose every chapter title
+names a harm (OOS-3). A ``"reference": true`` source is read and verified like any
+other, but only so that a chapter pair (OOS-4) can name its chapter: no per-source
+criterion grades it. An anchor names a self-written file (``anchor_file``, relative to
+the checkout, :data:`context.REPO_ROOT`) and the tips it must yield (``expect_tips``,
+OOS-5); its ref is recomputed from the file by ``sources/text.py``
+(:func:`text.read_text_file`), exactly as ``fetch --text-file`` computes it.
+
+**Investigate sources** (mode ``investigate``) also get a spot check
+(:func:`spot_checks`): the :data:`SPOT_CHECK_URLS` distinct evidence URLs whose sha256
+is lowest, printed for the operator's INV-6 verdict. Every source's tip count and
+spread across buckets are reported, never gated.
 
 **Matching** is deterministic, and each tip lands in at most one chapter window
 (:func:`chapter_index`): the chapter whose ``[start_s, end_s)`` holds the tip's
@@ -31,14 +48,16 @@ window is empty. "On list X" means X is in the tip's ``list_ids``.
 * the labels file is missing, not a regular file, larger than
   :data:`LABELS_FILE_MAX_BYTES`, malformed, names an unknown criterion id or lacks the
   data a criterion needs; or the database is missing or unreadable;
+* a labelled anchor file cannot be read as text by ``sources/text.py`` (missing, not a
+  regular file, binary, empty or too long: :data:`ABORT_ANCHOR`);
 * a labelled source is missing or unreviewed;
 * its packet is missing, not a regular file, larger than :data:`PACKET_FILE_MAX_BYTES`,
   unreadable, not its own or of an unexpected shape; a YouTube packet has zero segments
   or zero chapters; a wiki or text packet has empty text;
 * a label's chapter title is not byte-equal to a chapter title of the packet;
 * the archived proposal is missing, not a regular file, larger than
-  ``PROPOSAL_FILE_MAX_BYTES`` (the cap ``propose`` reads it under) or unreadable, or its
-  ``packet_sha256`` differs from the cached packet;
+  ``PROPOSAL_FILE_MAX_BYTES`` (the cap ``propose`` reads it under) or unreadable (its
+  ``degraded`` flag included), or its ``packet_sha256`` differs from the cached packet;
 * the scored proposals mix ``host`` or ``skill_sha256`` values (mixed ``model`` values
   are reported, not aborted), or their ``skill_sha256`` is not the current fingerprint,
   computed by :func:`context.skill_sha256` like ``context`` and ``propose`` do;
@@ -60,7 +79,8 @@ may not be the eval's own. The database is opened read-only; the score file is t
 only thing the scorer writes, atomically and never over another file
 (:func:`write_report`). The score file keeps every string exact; each printed report
 line goes through :func:`printable`, so an untrusted string in it (a chapter title
-from yt-dlp's metadata, a ref, a host or model name) prints as inert text.
+from yt-dlp's metadata, a ref, a host or model name, an evidence URL) prints as inert
+text.
 """
 
 from __future__ import annotations
@@ -71,14 +91,15 @@ import os
 import re
 import sqlite3
 import unicodedata
-from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import closing, suppress
 from dataclasses import dataclass, field, fields, replace
 from datetime import datetime
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Final
 
-from checklist_care import context, paths, proposal
+from checklist_care import context, paths, printing, proposal
 from checklist_care.context import decode_source_packet
 from checklist_care.db import connection
 from checklist_care.db.connection import BUSY_TIMEOUT_PRAGMA, open_connection
@@ -88,10 +109,12 @@ from checklist_care.errors import (
     EXIT_OK,
     ConfigError,
     EvalAbortError,
+    FetchError,
     ProposalInvalidError,
 )
 from checklist_care.limits import (
     BUCKET_DAILY,
+    BUCKET_IDS,
     BUCKET_LEFT_OUT,
     ID_MAX,
     PROPOSAL_FILE_MAX_BYTES,
@@ -99,6 +122,7 @@ from checklist_care.limits import (
     SOURCE_KIND_WIKI,
     SOURCE_KIND_YOUTUBE,
     SOURCE_MODE_EXTRACT,
+    SOURCE_MODE_INVESTIGATE,
 )
 from checklist_care.paths import lacks_hard_links, numbered_paths, sibling_path
 from checklist_care.placement import placement_problems
@@ -110,6 +134,7 @@ from checklist_care.proposal import (
     TIP_TEXT_LIMITS,
     holds_surrogate,
     is_bucket,
+    is_http_url,
     is_id,
     is_sha256,
     is_tip_audience,
@@ -118,7 +143,8 @@ from checklist_care.proposal import (
     text_problem,
 )
 from checklist_care.sources import packet as packet_module
-from checklist_care.sources.text import TEXT_FILE_MAX_BYTES
+from checklist_care.sources.text import TEXT_FILE_MAX_BYTES, read_text_file
+from checklist_care.sources.wiki import WIKIPEDIA_DOMAIN, is_wikipedia_url
 from checklist_care.store import lists as list_store
 from checklist_care.store import sources as source_store
 from checklist_care.store import tips as tip_store
@@ -142,9 +168,12 @@ CHAPTER_LEAD_S: Final = 5
 """A tip whose ``start_s`` falls within this many seconds before a chapter's start
 (``start - 5 <= start_s < start``) counts toward that chapter (plan §4.8)."""
 
-IN_SAMPLE_TIPS_MIN: Final = 8
-IN_SAMPLE_TIPS_MAX: Final = 12
-"""IS-2: each in-sample video holds 8 to 12 tips."""
+VIDEO_TIPS_MIN: Final = 8
+VIDEO_TIPS_MAX: Final = 12
+"""IS-2 and OOS-1: each scored video holds 8 to 12 tips."""
+
+OOS_COVERAGE_MIN: Final = Fraction(9, 10)
+"""OOS-1: at least 9/10 of each out-of-sample video's chapter windows hold a tip."""
 
 FILLER_PATTERN: Final = re.compile("subscribe", re.IGNORECASE)
 """IS-8: no tip name or action matches ``/subscribe/i``."""
@@ -152,11 +181,36 @@ FILLER_PATTERN: Final = re.compile("subscribe", re.IGNORECASE)
 NAME_EXACT: Final = "exact"
 """The one value of a label's ``expect.name``: the tip is named with the chapter title."""
 
+CHAPTER_HEADING: Final = re.compile(r"Ch\.\s?\d+\b")
+"""INV-2: a book chapter heading of the article, such as ``Ch.1: The Divided Self``
+(matched at the heading's start)."""
+
+CHAPTER_HEADINGS: Final = 11
+CHAPTER_HEADINGS_MIN: Final = 9
+"""INV-2: at least 9 of the article's 11 "Ch.N" headings have a tip whose ``locator``
+equals the heading. A packet with another number of such headings fails INV-2: the
+criterion is "9 of the 11", so no other count can pass it."""
+
+ELSEWHERE_MIN: Final = Fraction(1, 2)
+"""INV-4: at least half the tips cite a host that does not end in ``wikipedia.org``."""
+
+SPOT_CHECK_URLS: Final = 5
+SPOT_CHECK_SUPPORTED_MIN: Final = 4
+"""INV-6: the spot check prints the 5 evidence URLs whose sha256 is lowest, and the
+operator's verdict needs at least 4 of them to open and support their tip."""
+
 PASS: Final = "PASS"
 FAIL: Final = "FAIL"
 ABORT: Final = "ABORT"
+REPORTED_DEGRADED: Final = "REPORTED (degraded)"
+"""The verdict when a scored proposal says ``"degraded": true`` (plan §4.8): exit 0, but
+never a pass."""
 HARD: Final = "hard"
 SOFT: Final = "soft"
+OPERATOR: Final = "operator"
+"""The gate of a criterion the operator judges (INV-6): listed and reported, never scored."""
+OPERATOR_STATUS: Final = "OPERATOR"
+"""An operator criterion's status: neither PASS nor FAIL, the operator's to record."""
 
 LABELS_FILE_MAX_BYTES: Final = 1024 * 1024
 """A labels file holds a few chapter titles; a larger file is refused unread."""
@@ -172,6 +226,7 @@ or foreign file, not a packet ``fetch`` wrote."""
 ABORT_DATA_DIR: Final = "data-dir-not-explicit"
 ABORT_DATA_DIR_UNUSABLE: Final = "data-dir-unusable"
 ABORT_LABELS: Final = "labels-unusable"
+ABORT_ANCHOR: Final = "anchor-unusable"
 ABORT_DATABASE: Final = "database-unusable"
 ABORT_LABEL_LIST: Final = "label-list-missing"
 ABORT_SOURCE_MISSING: Final = "source-missing"
@@ -194,13 +249,20 @@ class LabelsError(ValueError):
     """The labels file cannot be scored against; the message says why."""
 
 
+class AnchorError(LabelsError):
+    """A labelled anchor file cannot be read as text (:data:`ABORT_ANCHOR`)."""
+
+
 @dataclass(frozen=True)
 class Expect:
     """What a labelled chapter's tip must be. ``None`` (or False) checks nothing.
 
     ``on_lists`` lists ids the tip must be on; an empty ``on_lists`` means "on no
-    list". ``on_any_of`` needs at least one of its ids. ``exact_name`` (``"name":
-    "exact"``) needs the tip to be named with the chapter title, byte for byte.
+    list". ``on_any_of`` needs at least one of its ids. ``bucket_any_of`` needs the tip
+    in one of its buckets. ``duplicate_of_name`` needs the tip's ``duplicate_of`` to
+    name a stored tip of that exact name (such as the operator's own "Brush your
+    teeth", OOS-S). ``exact_name`` (``"name": "exact"``) needs the tip to be named with
+    the chapter title, byte for byte.
     """
 
     bucket: int | None = None
@@ -209,12 +271,23 @@ class Expect:
     on_lists: tuple[int, ...] | None = None
     on_any_of: tuple[int, ...] | None = None
     exact_name: bool = False
+    bucket_any_of: tuple[int, ...] | None = None
+    duplicate_of_name: str | None = None
 
     @property
     def placement(self) -> bool:
-        """True when the expectation checks the bucket, audience or lists (IS-4)."""
+        """True when the expectation checks the bucket, audience, lists or duplicate
+        target (IS-4, OOS-2)."""
 
-        values = (self.bucket, self.not_bucket, self.audience, self.on_lists, self.on_any_of)
+        values = (
+            self.bucket,
+            self.not_bucket,
+            self.bucket_any_of,
+            self.audience,
+            self.on_lists,
+            self.on_any_of,
+            self.duplicate_of_name,
+        )
         return any(value is not None for value in values)
 
     def list_ids(self) -> tuple[int, ...]:
@@ -228,9 +301,32 @@ class ChapterLabel:
 
 
 @dataclass(frozen=True)
+class Anchor:
+    """A self-written garbage anchor (OOS-5): its file and the tips it must yield."""
+
+    path: Path
+    """Absolute; a relative ``anchor_file`` is a path in the checkout (:func:`anchor_path`)."""
+    expect_tips: int
+
+
+@dataclass(frozen=True)
 class SourceLabel:
     ref: str
     chapters: tuple[ChapterLabel, ...]
+    harm_titled: bool = False
+    """OOS-3: every chapter title of this video names a harm."""
+    reference: bool = False
+    """Read and verified only so that a chapter pair can name its chapters; no
+    per-source criterion grades it."""
+    anchor: Anchor | None = None
+    """Set for an anchor, whose ``ref`` was recomputed from its file (:func:`anchor_ref`)."""
+
+    @property
+    def graded(self) -> bool:
+        """True for a source the per-source criteria grade (OOS-1, INV-1 to INV-4): a
+        labelled source that is neither a reference nor an anchor."""
+
+        return not self.reference and self.anchor is None
 
 
 @dataclass(frozen=True)
@@ -239,6 +335,15 @@ class ChapterRef:
 
     ref: str
     title: str
+
+
+@dataclass(frozen=True)
+class ChapterPair:
+    """OOS-4: the tips in chapters ``a`` and ``b`` are not duplicates of each other:
+    neither one's ``duplicate_of`` is the other."""
+
+    a: ChapterRef
+    b: ChapterRef
 
 
 @dataclass(frozen=True)
@@ -270,6 +375,7 @@ class Labels:
     duplicate_pairs: tuple[DuplicatePair, ...]
     soft: tuple[SoftGroup, ...]
     criteria: tuple[str, ...]
+    not_duplicate_pairs: tuple[ChapterPair, ...] = ()
 
     def chapter_refs(self) -> Iterator[ChapterRef]:
         """Every chapter the labels name, in file order (repeats included)."""
@@ -280,6 +386,9 @@ class Labels:
         for pair in self.duplicate_pairs:
             yield pair.a
             yield pair.b
+        for chapter_pair in self.not_duplicate_pairs:
+            yield chapter_pair.a
+            yield chapter_pair.b
         for group in self.soft:
             for title in group.titles:
                 yield ChapterRef(group.ref, title)
@@ -297,11 +406,25 @@ class Labels:
 
 
 _LABELS_REQUIRED: Final = ("schema", "claim", "sources", "criteria")
-_LABELS_OPTIONAL: Final = ("duplicate_pairs", "soft")
+_LABELS_OPTIONAL: Final = ("duplicate_pairs", "not_duplicate_pairs", "soft")
 _SOURCE_KEYS: Final = ("ref", "chapters")
+_SOURCE_OPTIONAL: Final = ("harm_titled", "reference")
+ANCHOR_FILE_KEY: Final = "anchor_file"
+"""The key that makes a ``sources`` entry an anchor (plan Appendix E)."""
+_ANCHOR_KEYS: Final = (ANCHOR_FILE_KEY, "expect_tips")
 _CHAPTER_KEYS: Final = ("title", "expect")
-_EXPECT_KEYS: Final = ("bucket", "not_bucket", "audience", "on_lists", "on_any_of", "name")
+_EXPECT_KEYS: Final = (
+    "bucket",
+    "not_bucket",
+    "bucket_any_of",
+    "audience",
+    "on_lists",
+    "on_any_of",
+    "duplicate_of_name",
+    "name",
+)
 _PAIR_KEYS: Final = ("a", "b", "list_if_first")
+_CHAPTER_PAIR_KEYS: Final = ("a", "b")
 _SOFT_KEYS: Final = ("ref", "titles", "at_least", "expect")
 
 
@@ -344,6 +467,15 @@ def _list_ids(value: Any, where: str, *, allow_empty: bool) -> tuple[int, ...]:
     return tuple(int(item) for item in value)
 
 
+def _buckets(value: Any, where: str) -> tuple[int, ...]:
+    if not isinstance(value, list) or not value:
+        raise LabelsError(f"{where} must be a non-empty list of buckets")
+    buckets = tuple(_bucket(item, f"{where}[{index}]") for index, item in enumerate(value))
+    if len(set(buckets)) != len(buckets):
+        raise LabelsError(f"{where} repeats a bucket")
+    return buckets
+
+
 def _expect(value: Any, where: str) -> Expect:
     obj = _keys(value, where, (), _EXPECT_KEYS)
     if not obj:
@@ -355,6 +487,16 @@ def _expect(value: Any, where: str) -> Expect:
     if "audience" in obj and not is_tip_audience(audience):
         raise LabelsError(f"{where}.audience {NOT_A_TIP_AUDIENCE}")
     return Expect(
+        bucket_any_of=(
+            _buckets(obj["bucket_any_of"], f"{where}.bucket_any_of")
+            if "bucket_any_of" in obj
+            else None
+        ),
+        duplicate_of_name=(
+            _text(obj["duplicate_of_name"], f"{where}.duplicate_of_name")
+            if "duplicate_of_name" in obj
+            else None
+        ),
         bucket=_bucket(obj["bucket"], f"{where}.bucket") if "bucket" in obj else None,
         not_bucket=(
             _bucket(obj["not_bucket"], f"{where}.not_bucket") if "not_bucket" in obj else None
@@ -383,8 +525,54 @@ def _chapter_ref(value: Any, where: str, refs: Collection[str]) -> ChapterRef:
     return ChapterRef(ref, _text(value[1], f"{where}[1]"))
 
 
+def _flag(obj: dict[str, Any], key: str, where: str) -> bool:
+    value = obj.get(key, False)
+    if not isinstance(value, bool):
+        raise LabelsError(f"{where}.{key} must be true or false")
+    return value
+
+
+def anchor_path(raw: str) -> Path:
+    """The anchor file a labels ``anchor_file`` names: an absolute path as given, a
+    relative one inside the checkout, :data:`context.REPO_ROOT` (looked up at call time,
+    the root the skill fingerprint reads), so the result never depends on the working
+    directory."""
+
+    path = Path(raw)
+    return path if path.is_absolute() else context.REPO_ROOT / path
+
+
+def anchor_ref(path: Path) -> str:
+    """The source ref of the anchor file at ``path``, recomputed by ``sources/text.py``
+    exactly as ``fetch --text-file`` computes it (:func:`text.read_text_file`: decoded,
+    normalized, hashed); :class:`AnchorError` when the file cannot be read as text."""
+
+    try:
+        return read_text_file(path).ref
+    except FetchError as error:
+        raise AnchorError(error.message) from error
+    except ValueError as error:  # a path the OS cannot name, such as one holding a NUL
+        raise AnchorError(f"cannot read the text file '{path}': {error}") from error
+
+
+def _anchor(obj: dict[str, Any], where: str) -> SourceLabel:
+    _keys(obj, where, _ANCHOR_KEYS)
+    raw = _text(obj[ANCHOR_FILE_KEY], f"{where}.{ANCHOR_FILE_KEY}")
+    expect_tips = obj["expect_tips"]
+    if not is_whole(expect_tips) or expect_tips < 0:
+        raise LabelsError(f"{where}.expect_tips must be a whole number from 0")
+    path = anchor_path(raw)
+    try:
+        ref = anchor_ref(path)
+    except AnchorError as error:
+        raise AnchorError(f"{where}.{ANCHOR_FILE_KEY}: {error}") from error
+    return SourceLabel(ref, (), anchor=Anchor(path, int(expect_tips)))
+
+
 def _source(value: Any, where: str) -> SourceLabel:
-    obj = _keys(value, where, _SOURCE_KEYS)
+    if isinstance(value, dict) and ANCHOR_FILE_KEY in value:
+        return _anchor(value, where)
+    obj = _keys(value, where, _SOURCE_KEYS, _SOURCE_OPTIONAL)
     ref = _text(obj["ref"], f"{where}.ref")
     raw_chapters = obj["chapters"]
     if not isinstance(raw_chapters, list):
@@ -397,7 +585,14 @@ def _source(value: Any, where: str) -> SourceLabel:
         if any(seen.title == title for seen in chapters):
             raise LabelsError(f"{here}.title repeats {title!r}")
         chapters.append(ChapterLabel(title, _expect(chapter["expect"], f"{here}.expect")))
-    return SourceLabel(ref, tuple(chapters))
+    harm_titled = _flag(obj, "harm_titled", where)
+    reference = _flag(obj, "reference", where)
+    if reference and (chapters or harm_titled):
+        raise LabelsError(
+            f"{where} is a reference: it has no chapter expectations and is not harm_titled, "
+            "since no per-source criterion grades it"
+        )
+    return SourceLabel(ref, tuple(chapters), harm_titled=harm_titled, reference=reference)
 
 
 def _pair(value: Any, where: str, refs: Collection[str]) -> DuplicatePair:
@@ -410,6 +605,15 @@ def _pair(value: Any, where: str, refs: Collection[str]) -> DuplicatePair:
     if not is_id(first):
         raise LabelsError(f"{where}.list_if_first must be a list id (a whole number from 1)")
     return DuplicatePair(a, b, int(first))
+
+
+def _chapter_pair(value: Any, where: str, refs: Collection[str]) -> ChapterPair:
+    obj = _keys(value, where, _CHAPTER_PAIR_KEYS)
+    a = _chapter_ref(obj["a"], f"{where}.a", refs)
+    b = _chapter_ref(obj["b"], f"{where}.b", refs)
+    if a == b:
+        raise LabelsError(f"{where} pairs a chapter with itself")
+    return ChapterPair(a, b)
 
 
 def _soft(value: Any, where: str, refs: Collection[str]) -> SoftGroup:
@@ -477,7 +681,8 @@ def parse_labels(data: bytes, path: Path) -> Labels:
 
     Every key is known, no string holds an unpaired surrogate, every value has its
     type, every criterion id is one the scorer knows, and every criterion has the
-    label data it reads.
+    label data it reads. An anchor's file is read here, to recompute its ref
+    (:func:`anchor_ref`); one that cannot be read is an :class:`AnchorError`.
     """
 
     document = _keys(_strict_json(data), "the labels file", _LABELS_REQUIRED, _LABELS_OPTIONAL)
@@ -496,6 +701,10 @@ def parse_labels(data: bytes, path: Path) -> Labels:
         _pair(raw, f"duplicate_pairs[{i}]", refs)
         for i, raw in enumerate(_items(document, "duplicate_pairs"))
     )
+    not_pairs = tuple(
+        _chapter_pair(raw, f"not_duplicate_pairs[{i}]", refs)
+        for i, raw in enumerate(_items(document, "not_duplicate_pairs"))
+    )
     soft = tuple(_soft(raw, f"soft[{i}]", refs) for i, raw in enumerate(_items(document, "soft")))
     raw_criteria = document["criteria"]
     if not isinstance(raw_criteria, list) or not raw_criteria:
@@ -511,6 +720,7 @@ def parse_labels(data: bytes, path: Path) -> Labels:
         duplicate_pairs=pairs,
         soft=soft,
         criteria=criteria,
+        not_duplicate_pairs=not_pairs,
     )
     for criterion_id in criteria:
         criterion = CRITERIA.get(criterion_id)
@@ -566,6 +776,8 @@ def load_labels(path: Path) -> Labels:
         raise EvalAbortError(f"{ABORT_LABELS}: {path}: {error}") from error
     try:
         return parse_labels(data, path)
+    except AnchorError as error:
+        raise EvalAbortError(f"{ABORT_ANCHOR}: {path}: {error}") from error
     except LabelsError as error:
         raise EvalAbortError(f"{ABORT_LABELS}: {path}: {error}") from error
 
@@ -677,6 +889,8 @@ class Archived:
     model: str
     mode: str
     tips: tuple[TipFields, ...]
+    degraded: bool = False
+    """The proposal's ``degraded`` flag: true makes the verdict ``REPORTED (degraded)``."""
 
 
 class ArchiveError(ValueError):
@@ -760,6 +974,9 @@ def read_archive(data_dir: Path, ref: str) -> Archived:
     host, model, mode = document.get("host"), document.get("model"), document.get("mode")
     if not isinstance(host, str) or not isinstance(model, str) or not isinstance(mode, str):
         raise ArchiveError(f"{path} lacks its host, model or mode")
+    degraded = document.get("degraded")
+    if not isinstance(degraded, bool):
+        raise ArchiveError(f"{path} has no degraded flag (true or false)")
     tips = document.get("tips")
     if not isinstance(tips, list):
         raise ArchiveError(f"{path} has no tips list")
@@ -775,6 +992,7 @@ def read_archive(data_dir: Path, ref: str) -> Archived:
         model=model,
         mode=mode,
         tips=archived_tips,
+        degraded=degraded,
     )
 
 
@@ -826,12 +1044,19 @@ def scored_source(
 
 @dataclass(frozen=True)
 class Evidence:
-    """Everything the criteria read: the labels, the scored sources and the lists."""
+    """Everything the criteria read: the labels, the scored sources, the lists, the
+    activities print payload and the names of the tips scored tips are duplicates of."""
 
     labels: Labels
     sources: Mapping[str, ScoredSource]
     """By ref, in labels order."""
     lists: Mapping[int, list_store.ListRow]
+    activities: printing.ActivitiesSheet | None = None
+    """The activities sheet's payload, built by the print service
+    (:func:`printing.activities_sheet`) on the scored database (OOS-2)."""
+    duplicate_names: Mapping[int, str] = field(default_factory=dict)
+    """The name of each stored tip a scored tip's ``duplicate_of`` names, by id (an
+    expectation's ``duplicate_of_name``)."""
 
 
 def packet_aborts(ref: str, kind: str, packet: packet_module.Packet) -> list[Abort]:
@@ -872,6 +1097,11 @@ def packet_aborts(ref: str, kind: str, packet: packet_module.Packet) -> list[Abo
 
 
 def _loose(text: str) -> str:
+    """``text`` casefolded (after NFKC) with every character that is not a letter or a
+    digit stripped: punctuation, as OOS-3 compares a tip name with its harm title, and
+    also white space and symbols, so a spacing variant of the title matches it too. The
+    chapter-title abort uses it to name a near match."""
+
     folded = unicodedata.normalize("NFKC", text).casefold()
     return "".join(char for char in folded if char.isalnum())
 
@@ -957,20 +1187,42 @@ class Collected:
     sources: tuple[ScoredSource, ...]
     lists: Mapping[int, list_store.ListRow]
     aborts: tuple[Abort, ...]
+    activities: printing.ActivitiesSheet | None = None
+    duplicate_names: Mapping[int, str] = field(default_factory=dict)
 
     def evidence(self, labels: Labels) -> Evidence | None:
         """The criteria's input, or None when any abort holds."""
 
         if self.aborts:
             return None
-        return Evidence(labels, {source.ref: source for source in self.sources}, self.lists)
+        return Evidence(
+            labels,
+            {source.ref: source for source in self.sources},
+            self.lists,
+            activities=self.activities,
+            duplicate_names=self.duplicate_names,
+        )
+
+
+def duplicate_targets(tips: Iterable[ScoredTip]) -> frozenset[int]:
+    """The tip ids the ``duplicate_of`` of ``tips`` name; a value that is no tip id (a
+    tampered one past ``ID_MAX``) is left out, since it names no stored tip (IS-7 reports it)."""
+
+    return frozenset(
+        tip.duplicate_of for tip in tips if tip.duplicate_of is not None and is_id(tip.duplicate_of)
+    )
 
 
 def collect(
     conn: sqlite3.Connection, data_dir: Path, labels: Labels, current_skill: str
 ) -> Collected:
     """Read every labelled source's rows, packet and archived proposal, and apply the
-    abort rules against ``current_skill``, the current skill fingerprint."""
+    abort rules against ``current_skill``, the current skill fingerprint.
+
+    The rows (and the names of the tips their ``duplicate_of`` names) are read in one
+    snapshot. The activities print payload is then built by the print service itself
+    (:func:`printing.activities_sheet`, which takes its own snapshot), as ``GET
+    /print/activities`` builds it; a printed row shows only a tip's name and action."""
 
     with connection.snapshot(conn):
         lists = list_store.lists_by_id(conn)
@@ -981,6 +1233,11 @@ def collect(
             for row in rows
             if row.ref in wanted
         }
+        targets = duplicate_targets(tip for tips in stored_tips.values() for tip in tips)
+        duplicate_names = {
+            tip_id: brief.name for tip_id, brief in tip_store.briefs(conn, sorted(targets)).items()
+        }
+    activities = printing.activities_sheet(conn)
     aborts = [
         Abort(ABORT_LABEL_LIST, f"the labels name list {list_id}, which does not exist")
         for list_id in sorted(set(labels.list_ids()))
@@ -1053,7 +1310,13 @@ def collect(
             )
         )
     aborts.extend(consistency_aborts(sources, current_skill))
-    return Collected(sources=tuple(sources), lists=lists, aborts=tuple(aborts))
+    return Collected(
+        sources=tuple(sources),
+        lists=lists,
+        aborts=tuple(aborts),
+        activities=activities,
+        duplicate_names=duplicate_names,
+    )
 
 
 # --- criteria ------------------------------------------------------------------------
@@ -1069,6 +1332,8 @@ class CriterionResult:
 
     @property
     def status(self) -> str:
+        if self.gate == OPERATOR:
+            return OPERATOR_STATUS
         return PASS if self.passed else FAIL
 
     def to_json(self) -> dict[str, Any]:
@@ -1120,14 +1385,34 @@ def _list_text(ids: Sequence[int]) -> str:
     return "[" + ", ".join(map(str, ids)) + "]"
 
 
-def expectation_misses(tip: ScoredTip, expect: Expect) -> list[str]:
-    """How ``tip`` misses the bucket, audience and list parts of ``expect``."""
+def expectation_misses(
+    tip: ScoredTip, expect: Expect, duplicate_names: Mapping[int, str] | None = None
+) -> list[str]:
+    """How ``tip`` misses the bucket, audience, list and duplicate parts of ``expect``;
+    ``duplicate_names`` names the tips ``duplicate_of`` may point at
+    (:attr:`Evidence.duplicate_names`)."""
 
     misses: list[str] = []
     if expect.bucket is not None and tip.bucket != expect.bucket:
         misses.append(f"is in bucket {tip.bucket}, expected {expect.bucket}")
     if expect.not_bucket is not None and tip.bucket == expect.not_bucket:
         misses.append(f"is in bucket {tip.bucket}, expected any bucket but {expect.not_bucket}")
+    if expect.bucket_any_of is not None and tip.bucket not in expect.bucket_any_of:
+        misses.append(
+            f"is in bucket {tip.bucket}, expected one of {_list_text(expect.bucket_any_of)}"
+        )
+    if expect.duplicate_of_name is not None:
+        wanted = repr(expect.duplicate_of_name)
+        if tip.duplicate_of is None:
+            misses.append(f"has no duplicate_of, expected a duplicate of {wanted}")
+        else:
+            target = (duplicate_names or {}).get(tip.duplicate_of)
+            if target != expect.duplicate_of_name:
+                found = "no stored tip" if target is None else repr(target)
+                misses.append(
+                    f"has duplicate_of {tip.duplicate_of} ({found}), expected a duplicate of "
+                    f"{wanted}"
+                )
     if expect.audience is not None and tip.audience != expect.audience:
         misses.append(f"is {tip.audience}, expected {expect.audience}")
     placed = set(tip.list_ids)
@@ -1154,15 +1439,27 @@ def _is1(evidence: Evidence, tally: _Tally) -> None:
             tally.fail(f"{source.ref} has mode {source.row.mode!r}, expected {SOURCE_MODE_EXTRACT}")
 
 
+def tip_count_failure(source: ScoredSource) -> str | None:
+    """IS-2 and OOS-1: why the video holds too few or too many tips, or None."""
+
+    count = len(source.tips)
+    if VIDEO_TIPS_MIN <= count <= VIDEO_TIPS_MAX:
+        return None
+    return f"{source.ref} holds {count} tips, expected {VIDEO_TIPS_MIN} to {VIDEO_TIPS_MAX}"
+
+
+def empty_windows(source: ScoredSource) -> list[str]:
+    """The chapter titles whose window holds no tip, in packet order."""
+
+    return [title for title, tips in source.chapter_tips.items() if not tips]
+
+
 def _is2(evidence: Evidence, tally: _Tally) -> None:
     for source in evidence.sources.values():
-        count = len(source.tips)
-        if not IN_SAMPLE_TIPS_MIN <= count <= IN_SAMPLE_TIPS_MAX:
-            tally.fail(
-                f"{source.ref} holds {count} tips, expected "
-                f"{IN_SAMPLE_TIPS_MIN} to {IN_SAMPLE_TIPS_MAX}"
-            )
-        empty = [title for title, tips in source.chapter_tips.items() if not tips]
+        count = tip_count_failure(source)
+        if count is not None:
+            tally.fail(count)
+        empty = empty_windows(source)
         if empty:
             covered = len(source.chapter_tips) - len(empty)
             tally.fail(
@@ -1192,7 +1489,7 @@ def _is4(evidence: Evidence, tally: _Tally) -> None:
             tip = tally.tip(source, chapter.title)
             if tip is None:
                 continue
-            misses = expectation_misses(tip, chapter.expect)
+            misses = expectation_misses(tip, chapter.expect, evidence.duplicate_names)
             if misses:
                 tally.fail(
                     f"{source.ref}: the tip in {chapter.title!r} ({_shown(tip)}) "
@@ -1351,7 +1648,7 @@ def _is_soft(evidence: Evidence, tally: _Tally) -> None:
                 tally.note(f"{group.ref}: no tip in the chapter window {title!r}")
                 continue
             tip = window[0]
-            misses = expectation_misses(tip, group.expect)
+            misses = expectation_misses(tip, group.expect, evidence.duplicate_names)
             if group.expect.exact_name and tip.name != title:
                 misses.append("is not named with the exact chapter title")
             if misses:
@@ -1364,6 +1661,197 @@ def _is_soft(evidence: Evidence, tally: _Tally) -> None:
                 f"({'; '.join(group.titles)}) meet the expectation, expected at least "
                 f"{group.at_least}"
             )
+
+
+def graded_sources(evidence: Evidence) -> Iterator[ScoredSource]:
+    """The scored sources the per-source criteria grade: neither references nor anchors."""
+
+    return (source for source in evidence.sources.values() if source.label.graded)
+
+
+def _oos1(evidence: Evidence, tally: _Tally) -> None:
+    for source in graded_sources(evidence):
+        count = tip_count_failure(source)
+        if count is not None:
+            tally.fail(count)
+        windows = len(source.chapter_tips)
+        empty = empty_windows(source)
+        covered = windows - len(empty)
+        if not windows or Fraction(covered, windows) < OOS_COVERAGE_MIN:
+            tally.fail(
+                f"{source.ref}: {covered}/{windows} chapter windows hold a tip, expected at least "
+                f"{OOS_COVERAGE_MIN.numerator}/{OOS_COVERAGE_MIN.denominator}; empty: "
+                f"{'; '.join(empty)}"
+            )
+        elif empty:
+            tally.note(f"{source.ref}: {covered}/{windows} chapter windows hold a tip")
+        for failure in invariant_failures(source, evidence.lists):
+            tally.fail(f"{source.ref}: IS-7: {failure}")
+        for failure in filler_failures(source):
+            tally.fail(f"{source.ref}: IS-8: {failure}")
+
+
+def print_miss(
+    tip: ScoredTip, audience: str, activities: printing.ActivitiesSheet | None
+) -> str | None:
+    """OOS-2: why ``tip`` is not a row of the activities sheet's ``audience`` group, or
+    None. A printed row is the tip's name and action (:class:`printing.PrintItem`)."""
+
+    if activities is None:
+        return "has no activities print payload to appear in"
+    group = next((group for group in activities.groups if group.audience == audience), None)
+    if group is None:
+        return f"cannot appear in the activities sheet: it has no {audience} group"
+    if printing.PrintItem(tip.name, tip.action) not in group.items:
+        return f"is not in the {audience} group of the activities print payload"
+    return None
+
+
+def _oos2(evidence: Evidence, tally: _Tally) -> None:
+    for source in evidence.sources.values():
+        for chapter in source.label.chapters:
+            expect = chapter.expect
+            if not expect.placement:
+                continue
+            tip = tally.tip(source, chapter.title)
+            if tip is None:
+                continue
+            misses = expectation_misses(tip, expect, evidence.duplicate_names)
+            if expect.bucket == printing.ACTIVITIES_BUCKET:
+                printed = print_miss(tip, expect.audience or tip.audience, evidence.activities)
+                if printed is not None:
+                    misses.append(printed)
+            if misses:
+                tally.fail(
+                    f"{source.ref}: the tip in {chapter.title!r} ({_shown(tip)}) "
+                    + "; ".join(misses)
+                )
+
+
+def _oos3(evidence: Evidence, tally: _Tally) -> None:
+    for source in evidence.sources.values():
+        if not source.label.harm_titled:
+            continue
+        for title, window in source.chapter_tips.items():
+            for tip in window:
+                if _loose(tip.name) == _loose(title):
+                    tally.fail(
+                        f"{source.ref}: {_shown(tip)} in the window {title!r} is named with the "
+                        "harm the chapter title names"
+                    )
+        tally.note(
+            f"{source.ref}: part 2 is the operator's (M4): every tip's action in these windows "
+            "states the healthy behavior"
+        )
+
+
+def _oos4(evidence: Evidence, tally: _Tally) -> None:
+    for pair in evidence.labels.not_duplicate_pairs:
+        a = tally.tip(evidence.sources[pair.a.ref], pair.a.title)
+        b = tally.tip(evidence.sources[pair.b.ref], pair.b.title)
+        if a is None or b is None:
+            continue
+        for one, chapter, other, other_chapter in ((a, pair.a, b, pair.b), (b, pair.b, a, pair.a)):
+            if one.duplicate_of == other.id:
+                tally.fail(
+                    f"{chapter.ref}: the tip in {chapter.title!r} ({_shown(one)}) has "
+                    f"duplicate_of {other.id}, the tip in {other_chapter.title!r} of "
+                    f"{other_chapter.ref}: a false duplicate"
+                )
+
+
+def _oos5(evidence: Evidence, tally: _Tally) -> None:
+    for source in evidence.sources.values():
+        anchor = source.label.anchor
+        if anchor is None:
+            continue
+        if len(source.tips) != anchor.expect_tips:
+            tips = "; ".join(f"{_shown(tip)} in bucket {tip.bucket}" for tip in source.tips)
+            tally.fail(
+                f"{source.ref} (the anchor {anchor.path.name}) holds {len(source.tips)} tips, "
+                f"expected {anchor.expect_tips}{': ' + tips if tips else ''}"
+            )
+
+
+def _inv1(evidence: Evidence, tally: _Tally) -> None:
+    for source in graded_sources(evidence):
+        if source.row.kind != SOURCE_KIND_WIKI:
+            tally.fail(f"{source.ref} is a {source.row.kind} source, expected {SOURCE_KIND_WIKI}")
+        if source.row.mode != SOURCE_MODE_INVESTIGATE:
+            tally.fail(
+                f"{source.ref} has mode {source.row.mode!r}, expected {SOURCE_MODE_INVESTIGATE}"
+            )
+
+
+def chapter_headings(packet: packet_module.Packet) -> tuple[str, ...]:
+    """INV-2: the packet's section headings that name a book chapter ("Ch.N"), in order."""
+
+    return tuple(
+        section.heading for section in packet.sections if CHAPTER_HEADING.match(section.heading)
+    )
+
+
+def _inv2(evidence: Evidence, tally: _Tally) -> None:
+    for source in graded_sources(evidence):
+        headings = chapter_headings(source.packet)
+        if len(headings) != CHAPTER_HEADINGS:
+            tally.fail(
+                f"{source.ref}: the packet holds {len(headings)} 'Ch.N' headings, not the "
+                f"{CHAPTER_HEADINGS} INV-2 counts"
+            )
+            continue
+        located = {tip.locator for tip in source.tips}
+        missing = [heading for heading in headings if heading not in located]
+        covered = len(headings) - len(missing)
+        if covered < CHAPTER_HEADINGS_MIN:
+            tally.fail(
+                f"{source.ref}: {covered} of the {CHAPTER_HEADINGS} 'Ch.N' headings have a tip "
+                f"whose locator equals the heading, expected at least {CHAPTER_HEADINGS_MIN}; "
+                f"none for: {'; '.join(missing)}"
+            )
+        elif missing:
+            tally.note(f"{source.ref}: no tip for: {'; '.join(missing)}")
+
+
+def _inv3(evidence: Evidence, tally: _Tally) -> None:
+    for source in graded_sources(evidence):
+        for tip in source.tips:
+            if tip.evidence_url is None:
+                tally.fail(f"{source.ref}: {_shown(tip)} has no evidence_url")
+            elif not is_http_url(tip.evidence_url):
+                tally.fail(
+                    f"{source.ref}: {_shown(tip)} cites {tip.evidence_url!r}, not an http(s) URL"
+                )
+
+
+def _inv4(evidence: Evidence, tally: _Tally) -> None:
+    for source in graded_sources(evidence):
+        total = len(source.tips)
+        elsewhere = sum(
+            1
+            for tip in source.tips
+            if tip.evidence_url is not None and not is_wikipedia_url(tip.evidence_url)
+        )
+        shown = f"{elsewhere} of {total} tips cite a host outside {WIKIPEDIA_DOMAIN}"
+        if not total or Fraction(elsewhere, total) < ELSEWHERE_MIN:
+            tally.fail(f"{source.ref}: {shown}, expected at least half")
+        else:
+            tally.note(f"{source.ref}: {shown}")
+
+
+def _inv6(evidence: Evidence, tally: _Tally) -> None:
+    checks = spot_checks(evidence)
+    for source in evidence.sources.values():
+        if source.row.mode != SOURCE_MODE_INVESTIGATE:
+            continue
+        count = sum(1 for check in checks if check.ref == source.ref)
+        tally.note(
+            f"{source.ref}: open the {count} spot-check URLs printed below; at least "
+            f"{SPOT_CHECK_SUPPORTED_MIN} of the {SPOT_CHECK_URLS} must open and support their "
+            "tip (the operator's verdict, recorded in the M5 result)"
+        )
+    if not checks:
+        tally.note("no scored source in investigate mode cites a URL, so there is no spot check")
 
 
 def _lacks_nothing(labels: Labels) -> str | None:
@@ -1388,6 +1876,39 @@ def _lacks_pairs(labels: Labels) -> str | None:
 
 def _lacks_soft(labels: Labels) -> str | None:
     return None if labels.soft else "needs at least one soft expectation group"
+
+
+def _lacks_graded(labels: Labels) -> str | None:
+    graded = any(source.graded for source in labels.sources)
+    return None if graded else "needs a labelled source that is neither a reference nor an anchor"
+
+
+def _lacks_printed_placement(labels: Labels) -> str | None:
+    printed = any(
+        chapter.expect.bucket == printing.ACTIVITIES_BUCKET and chapter.expect.audience
+        for source in labels.sources
+        for chapter in source.chapters
+    )
+    if printed:
+        return None
+    return (
+        f"needs a labelled chapter that expects bucket {printing.ACTIVITIES_BUCKET} (the "
+        "activities sheet) and an audience"
+    )
+
+
+def _lacks_harm_titled(labels: Labels) -> str | None:
+    harmful = any(source.harm_titled for source in labels.sources)
+    return None if harmful else 'needs a labelled source with "harm_titled": true'
+
+
+def _lacks_not_duplicates(labels: Labels) -> str | None:
+    return None if labels.not_duplicate_pairs else "needs at least one not_duplicate_pairs entry"
+
+
+def _lacks_anchor(labels: Labels) -> str | None:
+    anchored = any(source.anchor is not None for source in labels.sources)
+    return None if anchored else f"needs an anchor ({ANCHOR_FILE_KEY})"
 
 
 @dataclass(frozen=True)
@@ -1423,9 +1944,24 @@ CRITERIA: Final[Mapping[str, Criterion]] = {
         Criterion("IS-7", HARD, _is7),
         Criterion("IS-8", HARD, _is8),
         Criterion("IS-S", SOFT, _is_soft, _lacks_soft),
+        Criterion("OOS-1", HARD, _oos1, _lacks_graded),
+        Criterion("OOS-2", HARD, _oos2, _lacks_printed_placement),
+        Criterion("OOS-3", HARD, _oos3, _lacks_harm_titled),
+        Criterion("OOS-4", HARD, _oos4, _lacks_not_duplicates),
+        Criterion("OOS-5", HARD, _oos5, _lacks_anchor),
+        Criterion("OOS-S", SOFT, _is_soft, _lacks_soft),
+        Criterion("INV-1", HARD, _inv1, _lacks_graded),
+        Criterion("INV-2", HARD, _inv2, _lacks_graded),
+        Criterion("INV-3", HARD, _inv3, _lacks_graded),
+        Criterion("INV-4", HARD, _inv4, _lacks_graded),
+        Criterion("INV-5", HARD, _is7),
+        Criterion("INV-6", OPERATOR, _inv6),
     )
 }
-"""Every criterion the scorer knows, by id. IS-9 is the operator's verdict (plan §4.8)."""
+"""Every criterion the scorer knows, by id. IS-9 is the operator's verdict and is never
+listed; INV-6 is the operator's verdict on the spot check, listed so the scorer prints
+it (gate :data:`OPERATOR`, never scored). OOS-S evaluates the soft groups as IS-S does,
+and INV-5 holds the IS-7 invariants with IS-7's own check (plan §4.8)."""
 
 
 def evaluate(evidence: Evidence) -> tuple[CriterionResult, ...]:
@@ -1460,16 +1996,94 @@ class SourceSummary:
     model: str
     skill_sha256: str
     packet_sha256: str
+    buckets: tuple[tuple[int, int], ...] = ()
+    """Each bucket of ``BUCKET_IDS`` and its tip count: reported, never gated."""
+    degraded: bool = False
+    """The archived proposal says ``"degraded": true``."""
+
+    def spread(self) -> str:
+        """The tips per bucket, such as ``1: 3, 2: 2, 3: 4, 4: 1``."""
+
+        return ", ".join(f"{bucket}: {count}" for bucket, count in self.buckets)
 
     def to_json(self) -> dict[str, Any]:
         return {
             "ref": self.ref,
             "tips": self.tips,
+            "buckets": {str(bucket): count for bucket, count in self.buckets},
             "host": self.host,
             "model": self.model,
             "skill_sha256": self.skill_sha256,
             "packet_sha256": self.packet_sha256,
+            "degraded": self.degraded,
         }
+
+
+@dataclass(frozen=True)
+class SpotCheck:
+    """INV-6: one evidence URL of an investigate source for the operator to open."""
+
+    ref: str
+    url: str
+    sha256: str
+    """Of the URL's UTF-8 bytes: the spot check takes the URLs whose sha256 is lowest."""
+    tip_id: int
+    """The lowest id among the tips that cite the URL."""
+    tip_name: str
+    cited_by: int
+    """How many of the source's tips cite the URL."""
+
+    def line(self) -> str:
+        more = f" and {self.cited_by - 1} more" if self.cited_by > 1 else ""
+        return (
+            f"spot check: {self.ref}: {self.url} (sha256 {self.sha256}; tip #{self.tip_id} "
+            f"{self.tip_name!r}{more})"
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "ref": self.ref,
+            "url": self.url,
+            "sha256": self.sha256,
+            "tip_id": self.tip_id,
+            "tip_name": self.tip_name,
+            "cited_by": self.cited_by,
+        }
+
+
+def url_sha256(url: str) -> str:
+    """The sha256 of ``url``'s UTF-8 bytes, as lowercase hex (the spot check's order)."""
+
+    return hashlib.sha256(url.encode("utf-8")).hexdigest()
+
+
+def spot_checks(evidence: Evidence) -> tuple[SpotCheck, ...]:
+    """INV-6: for each scored source in investigate mode, the :data:`SPOT_CHECK_URLS`
+    distinct evidence URLs whose sha256 (:func:`url_sha256`) is lowest, lowest first;
+    deterministic, so every run of the same rows prints the same URLs. Each URL is
+    shown with the lowest-id tip that cites it."""
+
+    checks: list[SpotCheck] = []
+    for source in evidence.sources.values():
+        if source.row.mode != SOURCE_MODE_INVESTIGATE:
+            continue
+        citing: dict[str, list[ScoredTip]] = {}
+        for tip in source.tips:  # by id
+            if tip.evidence_url is not None:
+                citing.setdefault(tip.evidence_url, []).append(tip)
+        ranked = sorted(citing, key=lambda url: (url_sha256(url), url))[:SPOT_CHECK_URLS]
+        checks.extend(
+            SpotCheck(
+                ref=source.ref,
+                url=url,
+                sha256=url_sha256(url),
+                tip_id=citing[url][0].id,
+                tip_name=citing[url][0].name,
+                cited_by=len(citing[url]),
+            )
+            for url in ranked
+        )
+    return tuple(checks)
 
 
 @dataclass(frozen=True)
@@ -1486,11 +2100,24 @@ class ScoreReport:
     criteria: tuple[CriterionResult, ...]
     path: Path | None = None
     """Where the score file was written."""
+    spot_checks: tuple[SpotCheck, ...] = ()
+
+    @property
+    def degraded_sources(self) -> tuple[str, ...]:
+        """The refs whose archived proposal says ``"degraded": true`` (each source's own
+        flag is its summary's ``degraded``)."""
+
+        return tuple(source.ref for source in self.sources if source.degraded)
 
     @property
     def verdict(self) -> str:
+        """``ABORT`` when any abort holds; else ``REPORTED (degraded)`` when a proposal is
+        degraded, whatever the criteria say; else ``FAIL`` or ``PASS``."""
+
         if self.aborts:
             return ABORT
+        if self.degraded_sources:
+            return REPORTED_DEGRADED
         return FAIL if self.failed else PASS
 
     @property
@@ -1509,7 +2136,8 @@ class ScoreReport:
 
     @property
     def exit_code(self) -> int:
-        return {PASS: EXIT_OK, FAIL: EXIT_EVAL_FAIL}.get(self.verdict, EXIT_EVAL_ABORT)
+        exits = {PASS: EXIT_OK, REPORTED_DEGRADED: EXIT_OK, FAIL: EXIT_EVAL_FAIL}
+        return exits.get(self.verdict, EXIT_EVAL_ABORT)
 
     def abort_message(self) -> str:
         """The one-line ``CC_EVAL_ABORT`` message of an aborted run (:func:`printable`)."""
@@ -1532,9 +2160,11 @@ class ScoreReport:
             "skill_sha256": self.skill_sha256,
             "models": list(self.models),
             "mixed_models": len(self.models) > 1,
+            "degraded_sources": list(self.degraded_sources),
             "sources": [source.to_json() for source in self.sources],
             "aborts": [{"rule": abort.rule, "detail": abort.detail} for abort in self.aborts],
             "criteria": [criterion.to_json() for criterion in self.criteria],
+            "spot_checks": [check.to_json() for check in self.spot_checks],
         }
 
     def lines(self) -> list[str]:
@@ -1545,12 +2175,19 @@ class ScoreReport:
             f"claim: {self.labels.claim}",
         ]
         for source in self.sources:
+            spread = f"; buckets {source.spread()}" if source.buckets else ""
             lines.append(
                 f"source: {source.ref}: {source.tips} tips; host {source.host}; "
-                f"model {source.model}"
+                f"model {source.model}{spread}"
             )
         if len(self.models) > 1:
             lines.append(f"models: mixed ({', '.join(self.models)}); reported, not aborted")
+        if self.degraded_sources:
+            lines.append(
+                f"degraded: {', '.join(self.degraded_sources)}: the proposal says degraded: "
+                f"true, so the criteria are reported and the verdict is {REPORTED_DEGRADED}, "
+                "never a pass"
+            )
         for abort in self.aborts:
             lines.append(f"abort: {abort.line()}")
         width = max((len(c.id) for c in self.criteria), default=0)
@@ -1558,9 +2195,12 @@ class ScoreReport:
             status = criterion.status
             if criterion.gate == SOFT:
                 status += " (reported, not gated)"
+            elif criterion.gate == OPERATOR:
+                status += " (the operator's verdict, not scored)"
             lines.append(f"{criterion.id:<{width}}  {criterion.gate}  {status}")
             lines.extend(f"    fail: {failure}" for failure in criterion.failures)
             lines.extend(f"    note: {note}" for note in criterion.notes)
+        lines.extend(check.line() for check in self.spot_checks)
         if self.failed:
             lines.append(f"failed: {', '.join(self.failed)}")
         lines.append(f"verdict: {self.verdict}")
@@ -1641,6 +2281,11 @@ def _summaries(sources: Sequence[ScoredSource]) -> tuple[SourceSummary, ...]:
             model=source.archived.model,
             skill_sha256=source.archived.skill_sha256,
             packet_sha256=source.packet_sha256,
+            buckets=tuple(
+                (bucket, sum(1 for tip in source.tips if tip.bucket == bucket))
+                for bucket in BUCKET_IDS
+            ),
+            degraded=source.archived.degraded,
         )
         for source in sources
     )
@@ -1729,5 +2374,6 @@ def run(data_dir: paths.DataDir, labels_path: Path) -> ScoreReport:
         sources=_summaries(collected.sources),
         aborts=collected.aborts,
         criteria=evaluate(evidence) if evidence is not None else (),
+        spot_checks=spot_checks(evidence) if evidence is not None else (),
     )
     return replace(report, path=write_report(data_dir.path, report, moment))

@@ -1,0 +1,30 @@
+{
+  "schema": "checklist-care.labels/1",
+  "claim": "out-of-sample: rgntlzYeaRM and VbGMWtr0AJI on run A's DB, plus the non-advice anchor",
+  "sources": [
+    {"ref": "youtube:rgntlzYeaRM", "harm_titled": true, "chapters": []},
+    {"ref": "youtube:VbGMWtr0AJI",
+     "chapters": [{"title": "Tracing Maps", "expect": {"bucket": 2, "audience": "kids+", "on_lists": []}}]},
+    {"anchor_file": "eval/anchors/non_advice.txt", "expect_tips": 0},
+    {"ref": "youtube:LpeDuC2sQ-w", "reference": true, "chapters": []}
+  ],
+  "not_duplicate_pairs": [
+    {"a": ["youtube:rgntlzYeaRM", "Sitting All Day"],
+     "b": ["youtube:LpeDuC2sQ-w", "Sit Up Straight, You're Not Dead Yet"]},
+    {"a": ["youtube:rgntlzYeaRM", "Using Your GPS"],
+     "b": ["youtube:VbGMWtr0AJI", "Tracing Maps"]}
+  ],
+  "soft": [
+    {"ref": "youtube:rgntlzYeaRM", "titles": ["Sitting All Day"],
+     "at_least": 1, "expect": {"bucket": 1, "on_lists": [2]}},
+    {"ref": "youtube:rgntlzYeaRM", "titles": ["Poor Oral Hygiene"],
+     "at_least": 1, "expect": {"bucket": 4, "duplicate_of_name": "Brush your teeth"}},
+    {"ref": "youtube:VbGMWtr0AJI",
+     "titles": ["Tracing Maps", "People Watching", "Ask Second-Order Questions",
+                "Learn To Recognize Logical Fallacies", "Maintain A Commonplace Book",
+                "Learn Chess Endgames First", "The Pre-Mortem Technique",
+                "Sitting in Complete Silence", "Write By Hand", "Reading About Failed Inventions"],
+     "at_least": 5, "expect": {"bucket_any_of": [2, 3]}}
+  ],
+  "criteria": ["OOS-1", "OOS-2", "OOS-3", "OOS-4", "OOS-5", "OOS-S"]
+}

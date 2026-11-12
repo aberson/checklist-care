@@ -1,4 +1,4 @@
-"""``checklist-care eval score`` through ``cli.main`` (plan §4.8, Step 15).
+"""``checklist-care eval score`` through ``cli.main`` (plan §4.8, Steps 15 and 16).
 
 Every scored data dir is built by the production path: ``init``, then ``fetch`` of the
 two in-sample videos with the network seams faked from the fixture packets
@@ -32,6 +32,27 @@ A chapter title holding control characters cannot add or rewrite a printed line,
 neither can a labels key in an abort line or an exception's text in the crash line.
 Without hard links the score file is still written, and still never over another.
 
+Step 16 scores the committed ``out_of_sample.json`` and
+``investigate_happiness_hypothesis.json`` the same way:
+
+* run C (plan §4.8) in run A's data dir: the operator's own "Brush your teeth" through
+  the API, the fixture packets ``packet_rgntlzYeaRM_synthetic.json`` and
+  ``packet_VbGMWtr0AJI_synthetic.json`` (the real chapter titles and timings, synthetic
+  transcript text) through ``fetch`` and ``propose``, the committed anchor staged under a
+  neutral name and fetched with ``fetch --text-file``, then Approve all through the API.
+  The known-good run passes with the anchor reviewed with 0 tips, and one known-garbage
+  run per condition of each OOS row fails exactly that criterion (OOS-1's IS-7 part by
+  tampering with a copy);
+* the investigation: ``fetch`` of the article with ``wiki.urlopen`` answering from
+  ``packet_wiki_synthetic.json``, then ``propose`` of ``proposal_investigate.json``. The
+  known-good run passes and prints the 5 spot-check URLs with the lowest sha256, a
+  degraded one exits 0 with ``REPORTED (degraded)``, and one known-garbage run per
+  condition of each INV row fails exactly that criterion (INV-3 and INV-5 by tampering
+  with a copy, since ``propose`` refuses such tips);
+* a labelled wiki or text source whose cached text is empty aborts, and so does an
+  anchor file that cannot be read; an anchor whose text changed after the ingest is a
+  missing source, since its ref is recomputed from the file.
+
 The rule details only in-memory inputs reach (every labels-file defect, the tip scored
 in a crowded window, each edited field, a packet with no duration) are asserted in
 ``tests/unit/test_scorer_rules.py``; this module asserts the end-to-end behavior through
@@ -44,6 +65,7 @@ titles come from the public chapter titles (plan Appendix F), never from transcr
 from __future__ import annotations
 
 import errno
+import hashlib
 import io
 import itertools
 import json
@@ -51,14 +73,18 @@ import os
 import shutil
 import sqlite3
 import sys
-from collections.abc import Callable, Iterable
-from contextlib import closing
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from contextlib import closing, contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from email.message import Message
 from pathlib import Path
 from typing import Any, BinaryIO
+from urllib.request import Request
+from urllib.response import addinfourl
 
 import pytest
+from fastapi.testclient import TestClient
 from youtube_transcript_api import FetchedTranscript, FetchedTranscriptSnippet
 
 from checklist_care import cli, context, paths, proposal, strict_json
@@ -91,8 +117,10 @@ from checklist_care.limits import (
     TIP_STATUS_PENDING,
 )
 from checklist_care.scoring import score
+from checklist_care.server.app import create_app
 from checklist_care.sources import packet as packet_module
-from checklist_care.sources import youtube
+from checklist_care.sources import text as text_module
+from checklist_care.sources import wiki, youtube
 from checklist_care.store import lists as list_store
 from checklist_care.store import sources as source_store
 from checklist_care.store import tips as tip_store
@@ -103,9 +131,13 @@ LABELS = ROOT / "eval" / "labels" / "in_sample.json"
 
 RPK = "RPK-xw3SrVw"
 LPE = "LpeDuC2sQ-w"
+RGN = "rgntlzYeaRM"
+VBG = "VbGMWtr0AJI"
 PACKET_FIXTURES = {
     RPK: FIXTURES / "packet_RPK-xw3SrVw_synthetic.json",
     LPE: FIXTURES / "packet_youtube_synthetic.json",
+    RGN: FIXTURES / "packet_rgntlzYeaRM_synthetic.json",
+    VBG: FIXTURES / "packet_VbGMWtr0AJI_synthetic.json",
 }
 
 NOW = datetime(2026, 11, 8, 12, 0, 0, tzinfo=UTC)
@@ -238,7 +270,7 @@ class TipSpec:
     action: str
     bucket: int
     audience: str
-    start_s: int
+    start_s: int | None
     list_ids: tuple[int, ...] = ()
     locator: str | None = None
     duplicate_of: str | None = None
@@ -388,11 +420,40 @@ def ingest(
     """What the skill does for one video: fetch, read context, write and submit a proposal."""
 
     fetch(capsys, data_dir, video)
-    code, out, err = run(
-        capsys, "--data-dir", str(data_dir), "context", "--source-ref", youtube.source_ref(video)
-    )
+    submit(capsys, data_dir, youtube.source_ref(video), specs, host=host, model=model)
+
+
+def read_context(capsys: pytest.CaptureFixture[str], data_dir: Path, ref: str) -> dict[str, Any]:
+    code, out, err = run(capsys, "--data-dir", str(data_dir), "context", "--source-ref", ref)
     assert code == EXIT_OK, err
-    ctx = json.loads(out)
+    ctx: dict[str, Any] = json.loads(out)
+    return ctx
+
+
+def propose_document(
+    capsys: pytest.CaptureFixture[str], data_dir: Path, document: dict[str, Any]
+) -> None:
+    """Write ``document`` where the skill writes its draft and submit it with ``propose``."""
+
+    key = paths.source_key(document["source_ref"])
+    draft = data_dir / paths.PROPOSALS_DIR / f"draft-{key}.json"
+    draft.write_bytes(json.dumps(document, ensure_ascii=False, indent=2).encode("utf-8"))
+    code, out, err = run(capsys, "--data-dir", str(data_dir), "propose", str(draft))
+    assert code == EXIT_OK, (out, err)
+
+
+def submit(
+    capsys: pytest.CaptureFixture[str],
+    data_dir: Path,
+    ref: str,
+    specs: Sequence[TipSpec],
+    *,
+    host: str = HOST_CLAUDE_CODE,
+    model: str = MODEL,
+) -> None:
+    """Read context for the fetched source ``ref``, then propose ``specs`` in extract mode."""
+
+    ctx = read_context(capsys, data_dir, ref)
     ids = {tip["name"]: tip["id"] for tip in ctx["tips"]}
     document = {
         "schema": proposal.PROPOSAL_SCHEMA,
@@ -423,11 +484,7 @@ def ingest(
             for spec in specs
         ],
     }
-    key = paths.source_key(youtube.source_ref(video))
-    draft = data_dir / paths.PROPOSALS_DIR / f"draft-{key}.json"
-    draft.write_bytes(json.dumps(document, ensure_ascii=False, indent=2).encode("utf-8"))
-    code, out, err = run(capsys, "--data-dir", str(data_dir), "propose", str(draft))
-    assert code == EXIT_OK, (out, err)
+    propose_document(capsys, data_dir, document)
 
 
 def build_run(
@@ -491,7 +548,13 @@ def archive_file(data_dir: Path, video: str) -> Path:
 def rewrite_archive(data_dir: Path, video: str, change: Callable[[dict[str, Any]], None]) -> None:
     """Apply ``change`` to the archived proposal of ``video``, to match a tampered row."""
 
-    path = archive_file(data_dir, video)
+    rewrite_archive_of(data_dir, youtube.source_ref(video), change)
+
+
+def rewrite_archive_of(data_dir: Path, ref: str, change: Callable[[dict[str, Any]], None]) -> None:
+    """Apply ``change`` to the archived proposal of the source ``ref``."""
+
+    path = proposal.archive_path(data_dir, ref)
     document = json.loads(path.read_bytes().decode("utf-8"))
     change(document)
     path.write_bytes(json.dumps(document, ensure_ascii=False, indent=2).encode("utf-8"))
@@ -500,12 +563,18 @@ def rewrite_archive(data_dir: Path, video: str, change: Callable[[dict[str, Any]
 def edit_archive(data_dir: Path, video: str, target: str, /, **changes: Any) -> None:
     """Change the archived proposal's tip named ``target`` to match a tampered row."""
 
+    edit_archive_of(data_dir, youtube.source_ref(video), target, **changes)
+
+
+def edit_archive_of(data_dir: Path, ref: str, target: str, /, **changes: Any) -> None:
+    """Change the tip named ``target`` in the archived proposal of ``ref``."""
+
     def change(document: dict[str, Any]) -> None:
         matching = [tip for tip in document["tips"] if tip["name"] == target]
         assert len(matching) == 1
         matching[0].update(changes)
 
-    rewrite_archive(data_dir, video, change)
+    rewrite_archive_of(data_dir, ref, change)
 
 
 def data_files(data_dir: Path) -> dict[Path, bytes]:
@@ -1931,3 +2000,981 @@ def test_a_crash_inside_eval_score_exits_6_not_9(
         f"{CODE_INTERNAL}: unexpected RuntimeError: scorer bug\\x1b[2K verdict: PASS\\u202e",
     ]
     assert list((data_dir / paths.EVAL_DIR).iterdir()) == []
+
+
+# --- Step 16: the out-of-sample run C, in run A's data dir ------------------------------
+
+OOS_LABELS = ROOT / "eval" / "labels" / "out_of_sample.json"
+INV_LABELS = ROOT / "eval" / "labels" / "investigate_happiness_hypothesis.json"
+ANCHOR = ROOT / "eval" / "anchors" / "non_advice.txt"
+HARD_OOS = tuple(f"OOS-{n}" for n in range(1, 6))
+HARD_INV = tuple(f"INV-{n}" for n in range(1, 6))
+STAGED_ANCHOR = "input-3.txt"
+"""The neutral name the operator copies the anchor to inside the run's data dir (M4)."""
+
+LOCAL_URL = "http://127.0.0.1:8450"
+"""The daily server's address; TestClient's default ``testserver`` Host is refused."""
+
+BRUSH: dict[str, Any] = {
+    "name": "Brush your teeth",
+    "action": "Brush for two full minutes, morning and night",
+    "bucket": 1,
+    "audience": "kids+",
+    "list_ids": [3, 1],
+}
+"""Run C's own tip (plan §4.8): bucket 1, kids+, on lists 3 and 1, added in the Library."""
+
+
+def rgn_specs() -> list[TipSpec]:
+    """A known-good proposal for rgntlzYeaRM, whose every chapter title names a harm: each
+    tip is named with the healthy behavior, never the harm (OOS-3)."""
+
+    return [
+        TipSpec("Cap Your Short Video Time", "Set a daily limit for short videos", 3, "adults", 0),
+        TipSpec("Choose Alcohol-Free Evenings", "Keep most evenings drink-free", 3, "adults", 67),
+        TipSpec(
+            "Get Up And Move Every Hour",
+            "Stand and walk for two minutes each hour",
+            1,
+            "adults",
+            124,
+            (2,),
+        ),
+        TipSpec("Chew Crunchy Whole Foods", "Add one crunchy food to a meal", 3, "kids+", 187),
+        TipSpec("Screens Off Before Bed", "Put screens away an hour before bed", 3, "kids+", 258),
+        TipSpec(
+            "Look After Your Teeth",
+            "Brush and floss every morning and night",
+            4,
+            "kids+",
+            319,
+            duplicate_of=BRUSH["name"],
+        ),
+        TipSpec("Air Out Your Rooms", "Open a window for ten minutes a day", 3, "adults", 379),
+        TipSpec("Find Your Way Without GPS", "Walk one route without a map app", 3, "adults", 445),
+        TipSpec("Call A Friend This Week", "Phone or meet one friend each week", 2, "adults", 512),
+        TipSpec("Write Worries Down", "Write a worry down, then close it", 3, "adults", 573),
+    ]
+
+
+def vbg_specs() -> list[TipSpec]:
+    """A known-good proposal for VbGMWtr0AJI: Tracing Maps is a kids+ activity on no list."""
+
+    return [
+        TipSpec("Tracing Maps", "Trace a map of a place you know by hand", 2, "kids+", 0),
+        TipSpec("People Watching", "Watch how people act in a busy place", 3, "adults", 62),
+        TipSpec(
+            "Ask Second-Order Questions", "Ask what follows the first effect", 3, "adults", 119
+        ),
+        TipSpec("Spot Logical Fallacies", "Name one fallacy you hear each day", 3, "adults", 171),
+        TipSpec("Keep A Commonplace Book", "Copy one good idea into a notebook", 2, "adults", 242),
+        TipSpec("Learn Chess Endgames First", "Practice one chess endgame a week", 2, "kids+", 305),
+        TipSpec("The Pre-Mortem Technique", "Imagine a plan failed and list why", 3, "adults", 373),
+        TipSpec("Sit In Silence", "Sit for five quiet minutes with no input", 3, "adults", 432),
+        TipSpec("Write By Hand", "Take your notes by hand", 3, "kids+", 504),
+        TipSpec("Read About Failed Inventions", "Read how one invention failed", 3, "adults", 570),
+    ]
+
+
+def oos_specs() -> Specs:
+    return {RGN: rgn_specs(), VBG: vbg_specs()}
+
+
+@contextmanager
+def api(data_dir: Path) -> Iterator[TestClient]:
+    """The production app on the data dir's database, as the operator's browser uses it."""
+
+    dist = data_dir.parent / "dist"
+    dist.mkdir(exist_ok=True)
+    app = create_app(data_dir / paths.DB_FILENAME, dist_dir=dist)
+    with TestClient(app, base_url=LOCAL_URL) as client:
+        yield client
+
+
+def add_own_tip(data_dir: Path) -> None:
+    """The Library's "Add my own tip" (``POST /api/tips``) of :data:`BRUSH`."""
+
+    with api(data_dir) as client:
+        response = client.post("/api/tips", json=BRUSH)
+    assert response.status_code == 201, response.text
+
+
+def approve_all(data_dir: Path, *, keep_pending: Iterable[str] = ()) -> None:
+    """The review inbox's Approve all (``POST /api/review/approve``), leaving the tips
+    named in ``keep_pending`` unapproved."""
+
+    kept = set(keep_pending)
+    with closing(sqlite3.connect(data_dir / paths.DB_FILENAME)) as conn:
+        rows = conn.execute("SELECT id, name FROM tip WHERE status = ?", (TIP_STATUS_PENDING,))
+        ids = [tip_id for tip_id, name in rows if name not in kept]
+    with api(data_dir) as client:
+        response = client.post("/api/review/approve", json={"tip_ids": ids})
+    assert response.status_code == 200, response.text
+    assert response.json() == {"approved": len(ids)}
+
+
+def ingest_anchor(
+    capsys: pytest.CaptureFixture[str], data_dir: Path, specs: Sequence[TipSpec] = ()
+) -> str:
+    """The anchor as the operator stages it (a copy under a neutral name inside the data
+    dir), fetched with ``fetch --text-file`` and proposed; returns the ref fetch printed."""
+
+    staged = data_dir / STAGED_ANCHOR
+    shutil.copyfile(ANCHOR, staged)
+    code, out, err = run(capsys, "--data-dir", str(data_dir), "fetch", "--text-file", str(staged))
+    assert code == EXIT_OK, err
+    (ref,) = [line.split(": ", 1)[1] for line in out.splitlines() if line.startswith("source_ref:")]
+    submit(capsys, data_dir, ref, specs)
+    return ref
+
+
+def build_oos_run(
+    capsys: pytest.CaptureFixture[str],
+    data_dir: Path,
+    *,
+    specs: Specs | None = None,
+    order: tuple[str, str] = (RGN, VBG),
+    anchor: Sequence[TipSpec] = (),
+    keep_pending: Iterable[str] = (),
+) -> str:
+    """Run C (plan §4.8) in run A's data dir: run A, the operator's own tip, the two
+    out-of-sample videos in ``order`` and the anchor, then Approve all. Returns the
+    anchor's ref."""
+
+    chosen = oos_specs() if specs is None else specs
+    build_run(capsys, data_dir)
+    add_own_tip(data_dir)
+    for video in order:
+        ingest(capsys, data_dir, video, chosen[video])
+    anchor_ref = ingest_anchor(capsys, data_dir, anchor)
+    approve_all(data_dir, keep_pending=keep_pending)
+    return anchor_ref
+
+
+def assert_passes(
+    scored: Scored,
+    hard: Sequence[str],
+    *,
+    soft: Sequence[str] = (),
+    operator: Sequence[str] = (),
+) -> None:
+    assert scored.code == EXIT_OK, (scored.out, scored.err)
+    assert scored.payload is not None
+    assert scored.payload["verdict"] == score.PASS
+    assert scored.payload["failed"] == []
+    assert scored.payload["soft_failed"] == []
+    statuses = {c["id"]: (c["gate"], c["status"]) for c in scored.payload["criteria"]}
+    assert statuses == {
+        **{criterion: (score.HARD, score.PASS) for criterion in hard},
+        **{criterion: (score.SOFT, score.PASS) for criterion in soft},
+        **{criterion: (score.OPERATOR, score.OPERATOR_STATUS) for criterion in operator},
+    }
+    assert scored.err == [f"data_dir: {scored.payload['data_dir']}"]
+
+
+def test_the_committed_out_of_sample_labels_hold_the_plans_expectations() -> None:
+    labels = score.load_labels(OOS_LABELS)
+    rgn, vbg, lpe = (youtube.source_ref(video) for video in (RGN, VBG, LPE))
+
+    assert labels.criteria == (*HARD_OOS, "OOS-S")
+    assert labels.sources == (
+        score.SourceLabel(rgn, (), harm_titled=True),
+        score.SourceLabel(
+            vbg,
+            (
+                score.ChapterLabel(
+                    "Tracing Maps", score.Expect(bucket=2, audience="kids+", on_lists=())
+                ),
+            ),
+        ),
+        score.SourceLabel(score.anchor_ref(ANCHOR), (), anchor=score.Anchor(ANCHOR, 0)),
+        score.SourceLabel(lpe, (), reference=True),
+    )
+    assert labels.not_duplicate_pairs == (
+        score.ChapterPair(
+            score.ChapterRef(rgn, "Sitting All Day"),
+            score.ChapterRef(lpe, "Sit Up Straight, You're Not Dead Yet"),
+        ),
+        score.ChapterPair(
+            score.ChapterRef(rgn, "Using Your GPS"), score.ChapterRef(vbg, "Tracing Maps")
+        ),
+    )
+    # OOS-S (plan §4.8, D30): the three predictions, soft until the operator confirms them.
+    vbg_titles = tuple(chapter["title"] for chapter in fixture_packet(VBG)["chapters"])
+    assert labels.soft == (
+        score.SoftGroup(rgn, ("Sitting All Day",), 1, score.Expect(bucket=1, on_lists=(2,))),
+        score.SoftGroup(
+            rgn, ("Poor Oral Hygiene",), 1, score.Expect(bucket=4, duplicate_of_name=BRUSH["name"])
+        ),
+        score.SoftGroup(vbg, vbg_titles, 5, score.Expect(bucket_any_of=(2, 3))),
+    )
+
+
+def test_the_committed_investigate_labels_name_the_book_and_inv_1_to_6() -> None:
+    labels = score.load_labels(INV_LABELS)
+
+    assert labels.sources == (score.SourceLabel("wiki:en:The_Happiness_Hypothesis", ()),)
+    assert labels.criteria == (*HARD_INV, "INV-6")
+
+
+OOS_CHAPTERS: dict[str, tuple[int, list[tuple[str, int, int]]]] = {
+    # yt-dlp's metadata of 2026-11-12 (one call while authoring, outside the gate).
+    RGN: (
+        647,
+        [
+            ("Short-Form Video Addiction", 0, 67),
+            ("Moderate Drinking", 67, 124),
+            ("Sitting All Day", 124, 187),
+            ("Eating Soft Foods", 187, 258),
+            ("Late-Night Screen Time", 258, 319),
+            ("Poor Oral Hygiene", 319, 379),
+            ("Breathing Bad Air", 379, 445),
+            ("Using Your GPS", 445, 512),
+            ("Chronic Loneliness", 512, 573),
+            ("Overthinking", 573, 647),
+        ],
+    ),
+    VBG: (
+        645,
+        [
+            ("Tracing Maps", 0, 62),
+            ("People Watching", 62, 119),
+            ("Ask Second-Order Questions", 119, 171),
+            ("Learn To Recognize Logical Fallacies", 171, 242),
+            ("Maintain A Commonplace Book", 242, 305),
+            ("Learn Chess Endgames First", 305, 373),
+            ("The Pre-Mortem Technique", 373, 432),
+            ("Sitting in Complete Silence", 432, 504),
+            ("Write By Hand", 504, 570),
+            ("Reading About Failed Inventions", 570, 645),
+        ],
+    ),
+}
+
+
+@pytest.mark.parametrize("video", sorted(OOS_CHAPTERS))
+def test_the_oos_fixture_packets_are_what_fetch_writes_with_the_real_chapters(
+    capsys: pytest.CaptureFixture[str], data_dir: Path, videos: FakeVideos, video: str
+) -> None:
+    init(capsys, data_dir)
+    fetch(capsys, data_dir, video)
+
+    written = packet_module.packet_path(data_dir, youtube.source_ref(video))
+    assert written.read_bytes() == PACKET_FIXTURES[video].read_bytes()
+    packet = fixture_packet(video)
+    duration, chapters = OOS_CHAPTERS[video]
+    assert packet["duration_s"] == duration
+    assert [(c["title"], c["start_s"], c["end_s"]) for c in packet["chapters"]] == chapters
+    assert all(
+        seg["text"].startswith("synthetic transcript") for seg in packet["transcript"]["segments"]
+    )
+
+
+def test_a_known_good_out_of_sample_run_passes_with_the_anchor_reviewed_with_no_tip(
+    capsys: pytest.CaptureFixture[str], data_dir: Path, videos: FakeVideos
+) -> None:
+    anchor_ref = build_oos_run(capsys, data_dir)
+    before = data_files(data_dir)
+
+    scored = score_run(capsys, data_dir, labels=OOS_LABELS)
+
+    assert_passes(scored, HARD_OOS, soft=("OOS-S",))
+    assert_left_as_it_was(data_dir, before)
+    payload = scored.payload
+    assert payload is not None
+    # The anchor's ref, recomputed from the committed file, is the one fetch printed for
+    # the staged copy; it was reviewed with 0 tips.
+    assert anchor_ref == score.anchor_ref(ANCHOR)
+    assert [(source["ref"], source["tips"]) for source in payload["sources"]] == [
+        (youtube.source_ref(RGN), 10),
+        (youtube.source_ref(VBG), 10),
+        (anchor_ref, 0),
+        (youtube.source_ref(LPE), 10),
+    ]
+    assert payload["sources"][1]["buckets"] == {"1": 0, "2": 3, "3": 7, "4": 0}
+    assert payload["spot_checks"] == []
+
+
+def test_a_run_with_9_of_10_windows_held_still_passes(
+    capsys: pytest.CaptureFixture[str], data_dir: Path, videos: FakeVideos
+) -> None:
+    # The OOS-1 boundary: one empty window of ten, 9 tips.
+    specs = oos_specs()
+    specs[RGN] = without(specs[RGN], "Chew Crunchy Whole Foods")
+    build_oos_run(capsys, data_dir, specs=specs)
+
+    scored = score_run(capsys, data_dir, labels=OOS_LABELS)
+
+    assert_passes(scored, HARD_OOS, soft=("OOS-S",))
+    assert criterion_of(scored, "OOS-1")["notes"] == [
+        f"{youtube.source_ref(RGN)}: 9/10 chapter windows hold a tip"
+    ]
+
+
+@dataclass(frozen=True)
+class OosGarbage:
+    """A known-garbage run C through ``propose``: the good specs with ``change`` applied,
+    the videos ingested in ``order``, the anchor proposed with ``anchor`` and the tips in
+    ``keep_pending`` left unapproved. It fails exactly ``criterion``, and one of that
+    criterion's failures holds every text in ``named``."""
+
+    criterion: str
+    named: tuple[str, ...]
+    change: Callable[[Specs], Specs] = field(default=lambda specs: specs)
+    order: tuple[str, str] = (RGN, VBG)
+    anchor: tuple[TipSpec, ...] = ()
+    keep_pending: tuple[str, ...] = ()
+
+
+def oos_changed(video: str, target: str, /, **changes: Any) -> Callable[[Specs], Specs]:
+    def change(specs: Specs) -> Specs:
+        return {**specs, video: changed(specs[video], target, **changes)}
+
+    return change
+
+
+def oos_without(video: str, *names: str) -> Callable[[Specs], Specs]:
+    def change(specs: Specs) -> Specs:
+        kept = specs[video]
+        for name in names:
+            kept = without(kept, name)
+        return {**specs, video: kept}
+
+    return change
+
+
+def oos_added(video: str, *extra: TipSpec) -> Callable[[Specs], Specs]:
+    def change(specs: Specs) -> Specs:
+        return {**specs, video: [*specs[video], *extra]}
+
+    return change
+
+
+NOT_PRINTED = "is not in the kids+ group of the activities print payload"
+SIT_UP = "Sit Up Straight, You're Not Dead Yet"
+
+OOS_GARBAGE: dict[str, OosGarbage] = {
+    # OOS-1: each condition of the row: the tip count both ways, the chapter coverage, and
+    # IS-8 (IS-7 is tampered with below).
+    "OOS-1 7 tips": OosGarbage(
+        "OOS-1",
+        ("holds 7 tips, expected 8 to 12",),
+        oos_without(RGN, "Cap Your Short Video Time", "Air Out Your Rooms", "Write Worries Down"),
+    ),
+    "OOS-1 13 tips": OosGarbage(
+        "OOS-1",
+        ("holds 13 tips, expected 8 to 12",),
+        oos_added(
+            VBG,
+            TipSpec("Draw Your Street", "Draw a plan of your own street", 3, "kids+", 70),
+            TipSpec("Ask Why Twice", "Ask why twice before you answer", 3, "adults", 130),
+            TipSpec("Keep A Quote Card", "Write one good quote on a card", 3, "adults", 250),
+        ),
+    ),
+    "OOS-1 8 of 10 windows": OosGarbage(
+        "OOS-1",
+        ("8/10 chapter windows hold a tip, expected at least 9/10",),
+        oos_without(RGN, "Chew Crunchy Whole Foods", "Air Out Your Rooms"),
+    ),
+    "OOS-1 IS-8 filler": OosGarbage(
+        "OOS-1",
+        ("IS-8: ", "matches /subscribe/i"),
+        oos_changed(VBG, "People Watching", action="Watch people, then subscribe to a channel"),
+    ),
+    # OOS-2: each part of the Tracing Maps label broken, and the tip left out of the print.
+    "OOS-2 bucket": OosGarbage(
+        "OOS-2",
+        ("'Tracing Maps'", "is in bucket 3, expected 2", NOT_PRINTED),
+        oos_changed(VBG, "Tracing Maps", bucket=3),
+    ),
+    "OOS-2 audience": OosGarbage(
+        "OOS-2",
+        ("is adults, expected kids+", NOT_PRINTED),
+        oos_changed(VBG, "Tracing Maps", audience="adults"),
+    ),
+    "OOS-2 lists": OosGarbage(
+        "OOS-2",
+        ("is on lists [5], expected no list", NOT_PRINTED),
+        oos_changed(VBG, "Tracing Maps", bucket=1, list_ids=(5,)),
+    ),
+    "OOS-2 not printed": OosGarbage(
+        "OOS-2",
+        ("'Tracing Maps') " + NOT_PRINTED,),  # the one miss: the placement holds
+        keep_pending=("Tracing Maps",),
+    ),
+    # OOS-3: a tip named with its harm title, as given, in another case with punctuation,
+    # and a later tip in a window whose first tip is fine.
+    "OOS-3 the title": OosGarbage(
+        "OOS-3",
+        ("'Moderate Drinking' in the window 'Moderate Drinking'",),
+        oos_changed(RGN, "Choose Alcohol-Free Evenings", name="Moderate Drinking"),
+    ),
+    "OOS-3 case and punctuation": OosGarbage(
+        "OOS-3",
+        ("'moderate drinking!' in the window 'Moderate Drinking'",),
+        oos_changed(RGN, "Choose Alcohol-Free Evenings", name="moderate drinking!"),
+    ),
+    "OOS-3 a later tip in the window": OosGarbage(
+        "OOS-3",
+        ("'Chronic Loneliness' in the window 'Chronic Loneliness'",),
+        oos_added(
+            RGN, TipSpec("Chronic Loneliness", "Join one group activity a week", 2, "adults", 540)
+        ),
+    ),
+    # OOS-4: each pair the plan names, called duplicates through propose. Using Your GPS
+    # can only be the later of its pair when VbGMWtr0AJI is ingested first.
+    "OOS-4 Sitting All Day": OosGarbage(
+        "OOS-4",
+        ("the tip in 'Sitting All Day'", f"the tip in {SIT_UP!r} of {youtube.source_ref(LPE)}"),
+        oos_changed(
+            RGN,
+            "Get Up And Move Every Hour",
+            bucket=4,
+            list_ids=(),
+            duplicate_of=SIT_UP,
+        ),
+    ),
+    "OOS-4 Using Your GPS": OosGarbage(
+        "OOS-4",
+        ("the tip in 'Using Your GPS'", "the tip in 'Tracing Maps'", "a false duplicate"),
+        oos_changed(RGN, "Find Your Way Without GPS", bucket=4, duplicate_of="Tracing Maps"),
+        order=(VBG, RGN),
+    ),
+    # OOS-5: the anchor gives a tip, in any bucket.
+    "OOS-5 a left-out tip": OosGarbage(
+        "OOS-5",
+        ("holds 1 tips, expected 0", "in bucket 4"),
+        anchor=(TipSpec("Weather Report", "Read the morning weather report", 4, "adults", None),),
+    ),
+    "OOS-5 an optional tip": OosGarbage(
+        "OOS-5",
+        ("holds 1 tips, expected 0", "in bucket 3"),
+        anchor=(TipSpec("Weather Report", "Read the morning weather report", 3, "adults", None),),
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(OOS_GARBAGE))
+def test_an_out_of_sample_garbage_run_fails_exactly_its_criterion(
+    capsys: pytest.CaptureFixture[str], data_dir: Path, videos: FakeVideos, case: str
+) -> None:
+    garbage = OOS_GARBAGE[case]
+    build_oos_run(
+        capsys,
+        data_dir,
+        specs=garbage.change(oos_specs()),
+        order=garbage.order,
+        anchor=garbage.anchor,
+        keep_pending=garbage.keep_pending,
+    )
+
+    scored = score_run(capsys, data_dir, labels=OOS_LABELS)
+
+    assert_fails_exactly(scored, garbage.criterion)
+    failures = criterion_of(scored, garbage.criterion)["failures"]
+    assert any(all(text in failure for text in garbage.named) for failure in failures), failures
+
+
+def test_every_oos_row_has_a_garbage_run() -> None:
+    # OOS-1's IS-7 part is tampered with below, in its own test.
+    assert {garbage.criterion for garbage in OOS_GARBAGE.values()} == set(HARD_OOS)
+
+
+def tamper_oos_list_item_on_a_bucket_3_tip(data_dir: Path) -> None:
+    target = tip_id(data_dir, "People Watching")
+    with closing(raw_connection(data_dir)) as conn, conn:
+        conn.execute("DROP TRIGGER list_item_insert_requires_bucket_1")
+        conn.execute(
+            "INSERT INTO list_item (list_id, tip_id, position) VALUES (2, ?, 1000)", (target,)
+        )
+    edit_archive(data_dir, VBG, "People Watching", list_ids=[2])
+
+
+def tamper_oos_adults_tip_on_kids_list(data_dir: Path) -> None:
+    target = tip_id(data_dir, "Get Up And Move Every Hour")  # bucket 1, adults, on list 2
+    with closing(raw_connection(data_dir)) as conn, conn:
+        conn.execute("DROP TRIGGER list_item_insert_requires_kids_tip_on_kids_list")
+        conn.execute(
+            "INSERT INTO list_item (list_id, tip_id, position) VALUES (3, ?, 1000)", (target,)
+        )
+    edit_archive(data_dir, RGN, "Get Up And Move Every Hour", list_ids=[2, 3])
+
+
+def tamper_oos_name_over_name_max(data_dir: Path) -> None:
+    name = "N" * (NAME_MAX + 1)
+    with closing(raw_connection(data_dir)) as conn, conn:
+        done = conn.execute("UPDATE tip SET name = ? WHERE name = ?", (name, "Write By Hand"))
+        assert done.rowcount == 1
+    edit_archive(data_dir, VBG, "Write By Hand", name=name)
+
+
+OOS_TAMPERS: dict[str, tuple[Callable[[Path], None], str, str]] = {
+    # OOS-1's IS-7 part, through each kind of invariant: the tampered video and the text.
+    "a list item on a bucket-3 tip": (
+        tamper_oos_list_item_on_a_bucket_3_tip,
+        VBG,
+        "only bucket-1 (daily) tips go on lists",
+    ),
+    "an adults tip on a kids list": (
+        tamper_oos_adults_tip_on_kids_list,
+        RGN,
+        "is a kids list and accepts only kids+ tips",
+    ),
+    "NAME_MAX": (
+        tamper_oos_name_over_name_max,
+        VBG,
+        f"its name is {NAME_MAX + 1} characters; NAME_MAX is {NAME_MAX}",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(OOS_TAMPERS))
+def test_an_out_of_sample_run_breaking_is7_fails_oos1(
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    data_dir: Path,
+    videos: FakeVideos,
+    case: str,
+) -> None:
+    tamper, video, named = OOS_TAMPERS[case]
+    build_oos_run(capsys, data_dir)
+    tampered = copy_data_dir(data_dir, tmp_path / "tampered")
+
+    tamper(tampered)
+
+    scored = score_run(capsys, tampered, labels=OOS_LABELS)
+    assert_fails_exactly(scored, "OOS-1")
+    (failure,) = criterion_of(scored, "OOS-1")["failures"]
+    assert failure.startswith(f"{youtube.source_ref(video)}: IS-7: #")
+    assert named in failure
+    assert_passes(score_run(capsys, data_dir, labels=OOS_LABELS), HARD_OOS, soft=("OOS-S",))
+
+
+def test_an_anchor_fetched_but_never_proposed_aborts(
+    capsys: pytest.CaptureFixture[str], data_dir: Path, videos: FakeVideos
+) -> None:
+    # OOS-5 needs the anchor reviewed: one that was never reviewed gives no verdict.
+    build_run(capsys, data_dir)
+    add_own_tip(data_dir)
+    for video in (RGN, VBG):
+        ingest(capsys, data_dir, video, oos_specs()[video])
+    staged = data_dir / STAGED_ANCHOR
+    shutil.copyfile(ANCHOR, staged)
+    code, _, err = run(capsys, "--data-dir", str(data_dir), "fetch", "--text-file", str(staged))
+    assert code == EXIT_OK, err
+
+    scored = score_run(capsys, data_dir, labels=OOS_LABELS)
+
+    assert_aborts(scored, score.ABORT_SOURCE_UNREVIEWED)
+    assert scored.abort_rules == [score.ABORT_SOURCE_UNREVIEWED]
+    assert f"{score.anchor_ref(ANCHOR)} was never proposed" in scored.err[-1]
+
+
+def test_the_out_of_sample_table_prints_the_criteria_and_the_bucket_spread(
+    capsys: pytest.CaptureFixture[str], data_dir: Path, videos: FakeVideos
+) -> None:
+    build_oos_run(capsys, data_dir)
+
+    scored = score_run(capsys, data_dir, labels=OOS_LABELS, as_json=False)
+
+    assert scored.code == EXIT_OK
+    lines = scored.out.splitlines()
+    for criterion in HARD_OOS:
+        assert f"{criterion}  {score.HARD}  {score.PASS}" in lines
+    assert f"OOS-S  {score.SOFT}  {score.PASS} (reported, not gated)" in lines
+    vbg_line = f"source: {youtube.source_ref(VBG)}: 10 tips; host {HOST_CLAUDE_CODE}; "
+    assert f"{vbg_line}model {MODEL}; buckets 1: 0, 2: 3, 3: 7, 4: 0" in lines
+    assert lines[-2:] == [f"verdict: {score.PASS}", f"score: {score_files(data_dir)[0]}"]
+
+
+def labels_with_anchor(tmp_path: Path, anchor_file: str) -> Path:
+    document = json.loads(OOS_LABELS.read_bytes().decode("utf-8"))
+    (entry,) = [item for item in document["sources"] if score.ANCHOR_FILE_KEY in item]
+    entry[score.ANCHOR_FILE_KEY] = anchor_file
+    target = tmp_path / "labels.json"
+    target.write_bytes(json.dumps(document, ensure_ascii=False).encode("utf-8"))
+    return target
+
+
+def test_an_anchor_whose_text_changed_since_the_ingest_is_a_missing_source(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path, data_dir: Path, videos: FakeVideos
+) -> None:
+    # The ref is recomputed from the file when scoring, never read from the labels: a
+    # changed anchor names a source the run never ingested.
+    build_oos_run(capsys, data_dir)
+    edited = tmp_path / "edited.txt"
+    edited.write_bytes(ANCHOR.read_bytes().replace(b"Weather.", b"Weather today.", 1))
+    edited_ref = text_module.read_text_file(edited).ref
+
+    scored = score_run(capsys, data_dir, labels=labels_with_anchor(tmp_path, str(edited)))
+
+    assert_aborts(scored, score.ABORT_SOURCE_MISSING)
+    assert scored.abort_rules == [score.ABORT_SOURCE_MISSING]
+    assert f"{edited_ref} is not in the database" in scored.err[-1]
+
+
+@pytest.mark.parametrize("anchor_file", ["eval/anchors/missing.txt", "a folder"])
+def test_an_anchor_file_that_cannot_be_read_aborts_and_writes_nothing(
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    data_dir: Path,
+    videos: FakeVideos,
+    anchor_file: str,
+) -> None:
+    build_oos_run(capsys, data_dir)
+    named = anchor_file
+    if anchor_file == "a folder":
+        named = str(tmp_path / "folder.txt")
+        Path(named).mkdir()
+
+    scored = score_run(capsys, data_dir, labels=labels_with_anchor(tmp_path, named))
+
+    assert_aborts(scored, score.ABORT_ANCHOR)
+    assert scored.err[-1].startswith(
+        f"{CODE_EVAL_ABORT}: {score.ABORT_ANCHOR}: {tmp_path / 'labels.json'}: "
+        "sources[2].anchor_file: cannot read the text file"
+    )
+    assert scored.out == ""
+    assert list((data_dir / paths.EVAL_DIR).iterdir()) == []
+
+
+def empty_the_cached_text(data_dir: Path, ref: str) -> None:
+    """Empty the cached packet's text (and its sections), and point the archived proposal
+    at the new packet, so only the empty-text abort holds."""
+
+    path = packet_module.packet_path(data_dir, ref)
+    packet = json.loads(path.read_bytes().decode("utf-8"))
+    packet["text"] = ""
+    packet["sections"] = []
+    path.write_bytes(json.dumps(packet, ensure_ascii=False, indent=2).encode("utf-8"))
+    sha256 = packet_module.file_sha256(path)
+    rewrite_archive_of(data_dir, ref, lambda document: document.update(packet_sha256=sha256))
+
+
+def test_a_labelled_text_source_with_empty_text_aborts(
+    capsys: pytest.CaptureFixture[str], data_dir: Path, videos: FakeVideos
+) -> None:
+    anchor_ref = build_oos_run(capsys, data_dir)
+    empty_the_cached_text(data_dir, anchor_ref)
+
+    scored = score_run(capsys, data_dir, labels=OOS_LABELS)
+
+    assert_aborts(scored, score.ABORT_PACKET_EMPTY)
+    assert scored.abort_rules == [score.ABORT_PACKET_EMPTY]
+    assert f"the text packet of {anchor_ref} has empty text" in scored.err[-1]
+
+
+# --- Step 16: the investigation of a Wikipedia article ----------------------------------
+
+WIKI_REF = "wiki:en:The_Happiness_Hypothesis"
+ARTICLE = "https://en.wikipedia.org/wiki/The_Happiness_Hypothesis"
+WIKI_PACKET_FIXTURE = FIXTURES / "packet_wiki_synthetic.json"
+INVESTIGATE_FIXTURE = FIXTURES / "proposal_investigate.json"
+
+
+def wiki_fixture_packet() -> dict[str, Any]:
+    payload: dict[str, Any] = json.loads(WIKI_PACKET_FIXTURE.read_bytes().decode("utf-8"))
+    return payload
+
+
+@dataclass
+class FakeArticleApi:
+    """``wiki.urlopen``: the Action API's formatversion=2 answer for the fixture article."""
+
+    def __call__(self, request: Request, timeout: float | None = None) -> addinfourl:
+        packet = wiki_fixture_packet()
+        page = {
+            "pageid": 1001,
+            "ns": 0,
+            "title": packet["title"],
+            "lastrevid": 1300000001,
+            "canonicalurl": packet["url"],
+            "extract": packet["text"],
+        }
+        body = json.dumps({"batchcomplete": True, "query": {"pages": [page]}}).encode("utf-8")
+        return addinfourl(io.BytesIO(body), Message(), request.full_url, 200)
+
+
+@pytest.fixture
+def article_api(monkeypatch: pytest.MonkeyPatch) -> FakeArticleApi:
+    fake = FakeArticleApi()
+    monkeypatch.setattr(wiki, "urlopen", fake)
+    return fake
+
+
+Document = dict[str, Any]
+
+
+def investigate(
+    capsys: pytest.CaptureFixture[str],
+    data_dir: Path,
+    change: Callable[[Document], None] | None = None,
+) -> Path:
+    """What the skill does for the article: ``init`` (M5 starts fresh), ``fetch``, read
+    context, then propose the 120-tip fixture investigation with ``change`` applied."""
+
+    init(capsys, data_dir)
+    code, out, err = run(capsys, "--data-dir", str(data_dir), "fetch", ARTICLE)
+    assert code == EXIT_OK, err
+    assert f"source_ref: {WIKI_REF}" in out.splitlines()
+    ctx = read_context(capsys, data_dir, WIKI_REF)
+    document: Document = json.loads(INVESTIGATE_FIXTURE.read_bytes().decode("utf-8"))
+    assert document["packet_sha256"] == ctx["source"]["packet_sha256"]  # a coherent fixture
+    document["skill_sha256"] = ctx["skill_sha256"]
+    if change is not None:
+        change(document)
+    propose_document(capsys, data_dir, document)
+    return data_dir
+
+
+def test_a_known_good_investigation_passes_and_prints_the_5_lowest_sha256_urls(
+    capsys: pytest.CaptureFixture[str], data_dir: Path, article_api: FakeArticleApi
+) -> None:
+    investigate(capsys, data_dir)
+    before = data_files(data_dir)
+
+    scored = score_run(capsys, data_dir, labels=INV_LABELS)
+    table = score_run(capsys, data_dir, labels=INV_LABELS, as_json=False)
+
+    assert_passes(scored, HARD_INV, operator=("INV-6",))
+    assert_left_as_it_was(data_dir, before)
+    # The oracle: the fixture's distinct evidence URLs, by the sha256 of their bytes.
+    tips = json.loads(INVESTIGATE_FIXTURE.read_bytes().decode("utf-8"))["tips"]
+    urls = sorted({tip["evidence_url"] for tip in tips}, key=lambda url: sha256_hex(url))[:5]
+    assert len(urls) == 5
+    payload = scored.payload
+    assert payload is not None
+    assert [check["url"] for check in payload["spot_checks"]] == urls
+    assert [check["sha256"] for check in payload["spot_checks"]] == [sha256_hex(u) for u in urls]
+    printed = [line for line in table.out.splitlines() if line.startswith("spot check: ")]
+    assert [line.split(" ")[3] for line in printed] == urls
+    assert all(line.startswith(f"spot check: {WIKI_REF}: ") for line in printed)
+    assert table.code == EXIT_OK
+    operator = f"INV-6  {score.OPERATOR}  {score.OPERATOR_STATUS}"
+    assert f"{operator} (the operator's verdict, not scored)" in table.out.splitlines()
+    assert payload["sources"][0]["buckets"] == {"1": 75, "2": 15, "3": 15, "4": 15}
+
+
+def sha256_hex(url: str) -> str:
+    return hashlib.sha256(url.encode("utf-8")).hexdigest()
+
+
+def test_a_degraded_investigation_exits_0_as_reported_never_a_pass(
+    capsys: pytest.CaptureFixture[str], data_dir: Path, article_api: FakeArticleApi
+) -> None:
+    # No web search: every tip cites the article itself, so INV-4 fails, yet the run is
+    # reported, not failed; it is never a pass either (plan §4.8, D19).
+    def degrade(document: Document) -> None:
+        document["degraded"] = True
+        for tip in document["tips"]:
+            tip["evidence_url"] = ARTICLE
+
+    investigate(capsys, data_dir, degrade)
+
+    scored = score_run(capsys, data_dir, labels=INV_LABELS)
+    table = score_run(capsys, data_dir, labels=INV_LABELS, as_json=False)
+
+    assert scored.code == table.code == EXIT_OK
+    assert scored.payload is not None
+    assert scored.payload["verdict"] == score.REPORTED_DEGRADED
+    assert scored.payload["degraded_sources"] == [WIKI_REF]
+    # One key, one type: the report-level list and each source's own flag.
+    assert "degraded" not in scored.payload
+    assert [source["degraded"] for source in scored.payload["sources"]] == [True]
+    assert scored.payload["failed"] == ["INV-4"]  # still evaluated and reported
+    lines = table.out.splitlines()
+    assert lines[-2] == f"verdict: {score.REPORTED_DEGRADED}"
+    assert "failed: INV-4" in lines
+    (spot,) = [line for line in lines if line.startswith("spot check: ")]
+    assert spot.startswith(f"spot check: {WIKI_REF}: {ARTICLE} (sha256 {sha256_hex(ARTICLE)}; ")
+    assert spot.endswith(" and 119 more)")
+
+
+def headings_of(document: Document) -> list[str]:
+    return list(dict.fromkeys(tip["locator"] for tip in document["tips"]))
+
+
+def one_tip_per_heading_in_extract_mode(document: Document) -> None:
+    # The first tip of each heading that cites a page outside Wikipedia: every other INV
+    # criterion still holds.
+    tips = [tip for tip in document["tips"] if not wiki.is_wikipedia_url(tip["evidence_url"])]
+    document["mode"] = SOURCE_MODE_EXTRACT
+    document["tips"] = [
+        next(tip for tip in tips if tip["locator"] == heading) for heading in headings_of(document)
+    ]
+
+
+def drop_the_last_three_headings(document: Document) -> None:
+    dropped = set(headings_of(document)[-3:])
+    document["tips"] = [tip for tip in document["tips"] if tip["locator"] not in dropped]
+
+
+def cite_the_article_until(elsewhere: int) -> Callable[[Document], None]:
+    """Keep ``elsewhere`` tips citing a page outside Wikipedia; the rest cite the article."""
+
+    def change(document: Document) -> None:
+        kept = 0
+        for tip in document["tips"]:
+            if not wiki.is_wikipedia_url(tip["evidence_url"]):
+                kept += 1
+                if kept > elsewhere:
+                    tip["evidence_url"] = ARTICLE
+
+    return change
+
+
+INV_GARBAGE: dict[str, tuple[str, Callable[[Document], None], tuple[str, ...]]] = {
+    # Through propose: the criterion, the change and the texts its failure holds.
+    "INV-1 extract mode": (
+        "INV-1",
+        one_tip_per_heading_in_extract_mode,
+        (f"{WIKI_REF} has mode 'extract', expected investigate",),
+    ),
+    "INV-2 8 of 11 headings": (
+        "INV-2",
+        drop_the_last_three_headings,
+        ("8 of the 11 'Ch.N' headings", "none for: Ch.9: Placeholder idea nine"),
+    ),
+    "INV-4 59 of 120": (
+        "INV-4",
+        cite_the_article_until(59),
+        ("59 of 120 tips cite a host outside wikipedia.org, expected at least half",),
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(INV_GARBAGE))
+def test_an_investigate_garbage_run_fails_exactly_its_criterion(
+    capsys: pytest.CaptureFixture[str], data_dir: Path, article_api: FakeArticleApi, case: str
+) -> None:
+    criterion, change, named = INV_GARBAGE[case]
+    investigate(capsys, data_dir, change)
+
+    scored = score_run(capsys, data_dir, labels=INV_LABELS)
+
+    assert_fails_exactly(scored, criterion)
+    failures = criterion_of(scored, criterion)["failures"]
+    assert any(all(text in failure for text in named) for failure in failures), failures
+
+
+def test_half_the_tips_citing_outside_wikipedia_still_pass_inv4(
+    capsys: pytest.CaptureFixture[str], data_dir: Path, article_api: FakeArticleApi
+) -> None:
+    investigate(capsys, data_dir, cite_the_article_until(60))
+
+    scored = score_run(capsys, data_dir, labels=INV_LABELS)
+
+    assert_passes(scored, HARD_INV, operator=("INV-6",))
+    assert criterion_of(scored, "INV-4")["notes"] == [
+        f"{WIKI_REF}: 60 of 120 tips cite a host outside wikipedia.org"
+    ]
+
+
+WIKI_TIP = "Placeholder Tip 1.01"
+"""The fixture's first tip: bucket 1, adults, on list 7, citing example.org."""
+
+
+def wiki_tip_edited(**columns: Any) -> Callable[[Path], None]:
+    """Set ``columns`` on :data:`WIKI_TIP` in the copy's database and archive."""
+
+    def apply(data_dir: Path) -> None:
+        assignments = ", ".join(f"{column} = ?" for column in columns)
+        with closing(raw_connection(data_dir)) as conn, conn:
+            done = conn.execute(
+                f"UPDATE tip SET {assignments} WHERE name = ?", (*columns.values(), WIKI_TIP)
+            )
+            assert done.rowcount == 1
+        edit_archive_of(data_dir, WIKI_REF, WIKI_TIP, **columns)
+
+    return apply
+
+
+def tamper_wiki_list_item_on_a_bucket_3_tip(data_dir: Path) -> None:
+    document = json.loads(INVESTIGATE_FIXTURE.read_bytes().decode("utf-8"))
+    name = next(tip["name"] for tip in document["tips"] if tip["bucket"] == 3)
+    target = tip_id(data_dir, name)
+    with closing(raw_connection(data_dir)) as conn, conn:
+        conn.execute("DROP TRIGGER list_item_insert_requires_bucket_1")
+        conn.execute(
+            "INSERT INTO list_item (list_id, tip_id, position) VALUES (2, ?, 1000)", (target,)
+        )
+    edit_archive_of(data_dir, WIKI_REF, name, list_ids=[2])
+
+
+def tamper_wiki_adults_tip_on_kids_list(data_dir: Path) -> None:
+    target = tip_id(data_dir, WIKI_TIP)
+    with closing(sqlite3.connect(data_dir / paths.DB_FILENAME)) as conn, conn:
+        conn.execute("DROP TRIGGER list_item_insert_requires_kids_tip_on_kids_list")
+        conn.execute(
+            "INSERT INTO list_item (list_id, tip_id, position) VALUES (3, ?, 1000)", (target,)
+        )
+    edit_archive_of(data_dir, WIKI_REF, WIKI_TIP, list_ids=[3, 7])
+
+
+INV_TAMPERS: dict[str, Tamper] = {
+    # INV-3 and INV-5 cannot be broken through propose, which refuses such tips.
+    "INV-3 no evidence_url": Tamper(
+        "INV-3", wiki_tip_edited(evidence_url=None), (f"'{WIKI_TIP}' has no evidence_url",)
+    ),
+    "INV-3 not an http(s) URL": Tamper(
+        "INV-3",
+        wiki_tip_edited(evidence_url="ftp://example.org/placeholder/ch1/tip-01"),
+        ("cites 'ftp://example.org/placeholder/ch1/tip-01', not an http(s) URL",),
+    ),
+    "INV-5 an adults tip on a kids list": Tamper(
+        "INV-5",
+        tamper_wiki_adults_tip_on_kids_list,
+        ("is a kids list and accepts only kids+ tips",),
+    ),
+    "INV-5 a list item on a bucket-3 tip": Tamper(
+        "INV-5",
+        tamper_wiki_list_item_on_a_bucket_3_tip,
+        ("only bucket-1 (daily) tips go on lists",),
+    ),
+    "INV-5 NAME_MAX": Tamper(
+        "INV-5",
+        wiki_tip_edited(name="N" * (NAME_MAX + 1)),
+        (f"its name is {NAME_MAX + 1} characters; NAME_MAX is {NAME_MAX}",),
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(INV_TAMPERS))
+def test_an_investigate_garbage_run_built_by_tampering_fails_exactly_its_criterion(
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    data_dir: Path,
+    article_api: FakeArticleApi,
+    case: str,
+) -> None:
+    tamper = INV_TAMPERS[case]
+    investigate(capsys, data_dir)
+    tampered = copy_data_dir(data_dir, tmp_path / "tampered")
+
+    tamper.apply(tampered)
+
+    scored = score_run(capsys, tampered, labels=INV_LABELS)
+    assert_fails_exactly(scored, tamper.criterion)
+    failures = criterion_of(scored, tamper.criterion)["failures"]
+    assert any(all(text in failure for text in tamper.named) for failure in failures), failures
+    assert_passes(score_run(capsys, data_dir, labels=INV_LABELS), HARD_INV, operator=("INV-6",))
+
+
+def test_every_inv_row_has_a_garbage_run() -> None:
+    criteria = {criterion for criterion, _, _ in INV_GARBAGE.values()}
+    criteria |= {tamper.criterion for tamper in INV_TAMPERS.values()}
+
+    assert criteria == set(HARD_INV)
+
+
+def test_a_labelled_wiki_source_with_empty_text_aborts(
+    capsys: pytest.CaptureFixture[str], data_dir: Path, article_api: FakeArticleApi
+) -> None:
+    investigate(capsys, data_dir)
+    empty_the_cached_text(data_dir, WIKI_REF)
+
+    scored = score_run(capsys, data_dir, labels=INV_LABELS)
+
+    assert_aborts(scored, score.ABORT_PACKET_EMPTY)
+    assert scored.abort_rules == [score.ABORT_PACKET_EMPTY]
+    assert f"the wiki packet of {WIKI_REF} has empty text" in scored.err[-1]

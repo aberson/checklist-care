@@ -1634,6 +1634,15 @@ module called from production code is exercised through its caller: the CLI subc
     `tests/integration/test_cli_eval.py` and `tests/integration/test_live_labels.py` (which then
     covers every label file).
 - **Files:** `src/checklist_care/scoring/score.py`, `eval/labels/out_of_sample.json`, `eval/labels/investigate_happiness_hypothesis.json`, `eval/anchors/non_advice.txt`, `tests/fixtures/packet_rgntlzYeaRM_synthetic.json`, `tests/fixtures/packet_VbGMWtr0AJI_synthetic.json`, `tests/test_no_oos_leak.py`, `tests/unit/test_scorer_rules.py`, `tests/integration/test_cli_eval.py`, `tests/integration/test_live_labels.py`
+- **Plan note (2026-11-12, settles review round 1):**
+  1. Files also include `src/checklist_care/proposal.py` for one exposure-only change: the private
+     `_is_http_url` becomes the public `is_http_url` (no behavior change, its caller updated), so
+     INV-3 applies exactly the URL check `propose` applies (code-quality.md § One source of truth;
+     the same pattern as Step 15's Scope decision point 1). Any other hunk there is out of scope.
+  2. Appendix E's examples predate these criteria. The committed label files are the authoritative
+     examples of the extension keys the IS/OOS criteria need: `reference` and
+     `not_duplicate_pairs` (OOS-4), and `soft` groups with `titles`, `at_least`, `bucket_any_of` and
+     `duplicate_of_name` (IS-S, OOS-S). Labels still hold only video ids and chapter titles.
 - **Done when:**
   - Through `cli.main(["eval", "score", …])` on DBs built by `propose` from the fixture packets,
     scored against the **committed** label files:
@@ -1649,6 +1658,7 @@ module called from production code is exercised through its caller: the CLI subc
     `AGENTS.md`.
   - The full Python gate is green.
 - **Depends on:** 7, 12, 14, 15
+- **Status:** DONE (2026-11-12)
 
 ### Manual Steps
 (These run after /build-phase completes. Operator drives.)

@@ -8,6 +8,7 @@ runs the same rules end to end on databases built by ``propose``.
 from __future__ import annotations
 
 import codecs
+import hashlib
 import json
 import re
 import sqlite3
@@ -21,7 +22,7 @@ from typing import Any
 
 import pytest
 
-from checklist_care import context, limits, paths, placement, proposal, strict_json
+from checklist_care import context, limits, paths, placement, printing, proposal, strict_json
 from checklist_care.db import connection, seed
 from checklist_care.errors import EXIT_EVAL_ABORT, EXIT_EVAL_FAIL, EXIT_OK, EvalAbortError
 from checklist_care.limits import (
@@ -49,8 +50,8 @@ from checklist_care.limits import (
 from checklist_care.scoring import score
 from checklist_care.sources import packet as packet_module
 from checklist_care.sources import text as text_module
-from checklist_care.sources import youtube
-from checklist_care.sources.packet import Chapter, Packet, Segment, Transcript
+from checklist_care.sources import wiki, youtube
+from checklist_care.sources.packet import Chapter, Packet, Section, Segment, Transcript
 from checklist_care.store.lists import ListRow
 from checklist_care.store.sources import SourceRow
 from checklist_care.store.tips import TipDetail
@@ -356,7 +357,7 @@ LABEL_DEFECTS: dict[str, tuple[Callable[[dict[str, Any]], Any], str]] = {
     "soft at_least too high": (lambda d: d["soft"][0].update(at_least=2), "at_least"),
     "no criteria": (lambda d: d.update(criteria=[]), "criteria must be a non-empty list"),
     "repeated criterion": (lambda d: d["criteria"].append("IS-1"), "repeats an id"),
-    "unknown criterion": (lambda d: d["criteria"].append("OOS-1"), "'OOS-1' is not one"),
+    "unknown criterion": (lambda d: d["criteria"].append("OOS-9"), "'OOS-9' is not one"),
     "unpaired surrogate in a chapter title": (
         lambda d: d["sources"][1]["chapters"][0].update(title="\ud800"),
         "sources[1] holds an unpaired surrogate",
@@ -444,12 +445,16 @@ def test_a_labels_path_that_is_not_a_regular_file_is_refused_unopened(tmp_path: 
     )
 
 
-def test_the_criteria_registry_holds_the_in_sample_ids_and_their_gates() -> None:
+def test_the_criteria_registry_holds_every_scored_id_and_its_gate() -> None:
     gates = {criterion_id: item.gate for criterion_id, item in score.CRITERIA.items()}
 
     assert gates == {
         **{f"IS-{n}": score.HARD for n in range(1, 9)},
         "IS-S": score.SOFT,
+        **{f"OOS-{n}": score.HARD for n in range(1, 6)},
+        "OOS-S": score.SOFT,
+        **{f"INV-{n}": score.HARD for n in range(1, 6)},
+        "INV-6": score.OPERATOR,  # the operator's verdict on the spot check (plan §4.8)
     }
     assert all(item.id == criterion_id for criterion_id, item in score.CRITERIA.items())
 
@@ -1127,6 +1132,9 @@ OWNED: tuple[tuple[ModuleType, ModuleType, str], ...] = (
     (score, paths, "sibling_path"),
     (score, paths, "numbered_paths"),
     (score, paths, "lacks_hard_links"),
+    (score, proposal, "is_http_url"),
+    (score, wiki, "is_wikipedia_url"),
+    (score, text_module, "read_text_file"),
     (packet_module, paths, "sibling_path"),
     (packet_module, paths, "lacks_hard_links"),
 )
@@ -1143,6 +1151,13 @@ def test_each_consumer_holds_its_owners_object_not_a_copy(
     # The consumer's attribute against the owner's: a re-spelled copy is equal, not the same.
     assert consumer is not owner
     assert getattr(consumer, name) is getattr(owner, name)
+
+
+def test_the_wikipedia_domain_is_the_wiki_modules_object_not_a_copy() -> None:
+    # INV-4 names the domain wiki.is_wikipedia_url tests; a freshly built equal string is
+    # another object, so a re-spelled copy fails the pin.
+    assert "".join(["wikipedia", ".org"]) is not wiki.WIKIPEDIA_DOMAIN
+    assert score.WIKIPEDIA_DOMAIN is wiki.WIKIPEDIA_DOMAIN
 
 
 def test_the_packet_cap_holds_the_text_ingest_caps_object_not_a_copy() -> None:
@@ -1172,3 +1187,753 @@ def test_the_read_only_open_takes_any_database_path_and_never_writes(
             conn.execute("CREATE TABLE scratch (x)")
 
     assert database.read_bytes() == before
+
+
+# --- out-of-sample and investigate labels (Step 16) ------------------------------------
+
+OOS_LABELS = ROOT / "eval" / "labels" / "out_of_sample.json"
+ANCHOR = ROOT / "eval" / "anchors" / "non_advice.txt"
+
+
+def oos_document() -> dict[str, Any]:
+    document: dict[str, Any] = json.loads(OOS_LABELS.read_bytes().decode("utf-8"))
+    return document
+
+
+def keep_only_anchor_and_reference(document: dict[str, Any]) -> None:
+    document["sources"] = [document["sources"][2], document["sources"][3]]
+    document.pop("not_duplicate_pairs")
+    document.pop("soft")
+    document["criteria"] = ["OOS-1"]
+
+
+OOS_LABEL_DEFECTS: dict[str, tuple[Callable[[dict[str, Any]], Any], str]] = {
+    # The committed out_of_sample.json: [0] rgntlzYeaRM (harm_titled), [1] VbGMWtr0AJI,
+    # [2] the anchor, [3] LpeDuC2sQ-w (reference); soft [1] and [2] use the new keys.
+    "unknown source key": (
+        lambda d: d["sources"][0].update(harmful=True),
+        "sources[0] has the unknown key(s) harmful",
+    ),
+    "harm_titled not a bool": (
+        lambda d: d["sources"][0].update(harm_titled="yes"),
+        "sources[0].harm_titled must be true or false",
+    ),
+    "reference not a bool": (
+        lambda d: d["sources"][3].update(reference=1),
+        "sources[3].reference must be true or false",
+    ),
+    "a reference with chapter expectations": (
+        lambda d: d["sources"][3].update(chapters=[{"title": "X", "expect": {"bucket": 1}}]),
+        "sources[3] is a reference",
+    ),
+    "a harm-titled reference": (
+        lambda d: d["sources"][3].update(harm_titled=True),
+        "sources[3] is a reference",
+    ),
+    "unknown anchor key": (
+        lambda d: d["sources"][2].update(chapters=[]),
+        "sources[2] has the unknown key(s) chapters",
+    ),
+    "anchor with a ref": (
+        lambda d: d["sources"][2].update(ref=text_module.REF_PREFIX + "0" * 64),
+        "sources[2] has the unknown key(s) ref",
+    ),
+    "anchor without expect_tips": (
+        lambda d: d["sources"][2].pop("expect_tips"),
+        "sources[2] lacks expect_tips",
+    ),
+    "expect_tips below 0": (
+        lambda d: d["sources"][2].update(expect_tips=-1),
+        "sources[2].expect_tips must be a whole number from 0",
+    ),
+    "expect_tips as a bool": (
+        lambda d: d["sources"][2].update(expect_tips=False),
+        "sources[2].expect_tips must be a whole number from 0",
+    ),
+    "empty anchor_file": (
+        lambda d: d["sources"][2].update(anchor_file=" "),
+        "sources[2].anchor_file must be a non-empty string",
+    ),
+    "not-duplicate pair with an unlabelled ref": (
+        lambda d: d["not_duplicate_pairs"][0].update(b=[REF, "X"]),
+        "not_duplicate_pairs[0].b names",
+    ),
+    "not-duplicate pair with itself": (
+        lambda d: d["not_duplicate_pairs"][0].update(b=d["not_duplicate_pairs"][0]["a"]),
+        "not_duplicate_pairs[0] pairs a chapter with itself",
+    ),
+    "unknown not-duplicate pair key": (
+        lambda d: d["not_duplicate_pairs"][0].update(list_if_first=1),
+        "not_duplicate_pairs[0] has the unknown key(s) list_if_first",
+    ),
+    "not_duplicate_pairs not a list": (
+        lambda d: d.update(not_duplicate_pairs={}),
+        "not_duplicate_pairs must be a list",
+    ),
+    "empty bucket_any_of": (
+        lambda d: d["soft"][2]["expect"].update(bucket_any_of=[]),
+        "soft[2].expect.bucket_any_of must be a non-empty list of buckets",
+    ),
+    "repeated bucket_any_of": (
+        lambda d: d["soft"][2]["expect"].update(bucket_any_of=[2, 2]),
+        "soft[2].expect.bucket_any_of repeats a bucket",
+    ),
+    "bucket_any_of bucket 5": (
+        lambda d: d["soft"][2]["expect"].update(bucket_any_of=[2, 5]),
+        f"soft[2].expect.bucket_any_of[1] {proposal.NOT_A_BUCKET}",
+    ),
+    "blank duplicate_of_name": (
+        lambda d: d["soft"][1]["expect"].update(duplicate_of_name=" "),
+        "soft[1].expect.duplicate_of_name must be a non-empty string",
+    ),
+    "OOS-1 without a graded source": (
+        keep_only_anchor_and_reference,
+        "OOS-1 needs a labelled source that is neither a reference nor an anchor",
+    ),
+    "OOS-2 without a printed placement": (
+        lambda d: d["sources"][1]["chapters"][0]["expect"].update(bucket=3),
+        "OOS-2 needs a labelled chapter that expects bucket 2",
+    ),
+    "OOS-3 without a harm-titled source": (
+        lambda d: d["sources"][0].pop("harm_titled"),
+        'OOS-3 needs a labelled source with "harm_titled": true',
+    ),
+    "OOS-4 without a pair": (lambda d: d.pop("not_duplicate_pairs"), "OOS-4 needs"),
+    "OOS-5 without an anchor": (lambda d: d["sources"].pop(2), "OOS-5 needs an anchor"),
+    "OOS-S without a soft group": (lambda d: d.pop("soft"), "OOS-S needs"),
+}
+
+
+@pytest.mark.parametrize("defect", sorted(OOS_LABEL_DEFECTS))
+def test_a_defective_out_of_sample_labels_file_is_refused(defect: str) -> None:
+    change, message = OOS_LABEL_DEFECTS[defect]
+    document = oos_document()
+    change(document)
+
+    with pytest.raises(score.LabelsError) as raised:
+        parse(document)
+
+    assert message in str(raised.value)
+
+
+@pytest.mark.parametrize("criterion", [f"INV-{n}" for n in range(1, 5)])
+def test_an_investigate_criterion_needs_a_graded_source(criterion: str) -> None:
+    document = oos_document()
+    keep_only_anchor_and_reference(document)
+    document["criteria"] = [criterion]
+
+    with pytest.raises(score.LabelsError, match=f"{criterion} needs a labelled source"):
+        parse(document)
+
+
+def test_the_committed_anchor_ref_is_its_text_hash_wherever_the_scorer_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The anchor is UTF-8 without a byte-order mark, LF and NFC, so its ref is the sha256
+    # of its bytes: an oracle independent of sources/text.py's normalizing.
+    data = ANCHOR.read_bytes()
+    assert b"\r" not in data and data.isascii()
+    monkeypatch.chdir(tmp_path)  # a relative anchor_file never resolves against the cwd
+
+    labels = score.load_labels(OOS_LABELS)
+
+    (anchored,) = [source for source in labels.sources if source.anchor is not None]
+    assert anchored.anchor == score.Anchor(ANCHOR, 0)
+    assert anchored.ref == f"{text_module.REF_PREFIX}{hashlib.sha256(data).hexdigest()}"
+    assert not anchored.graded and not anchored.reference
+
+
+def test_an_anchor_ref_is_recomputed_as_fetch_computes_it(tmp_path: Path) -> None:
+    # A copy with a byte-order mark and CRLF line endings is the same text to
+    # `fetch --text-file`, so it recomputes to the same ref; a changed word does not.
+    same = tmp_path / "same.txt"
+    same.write_bytes(codecs.BOM_UTF8 + ANCHOR.read_bytes().replace(b"\n", b"\r\n"))
+    changed = tmp_path / "changed.txt"
+    changed.write_bytes(ANCHOR.read_bytes().replace(b"Weather.", b"Weather today.", 1))
+
+    original = score.anchor_ref(ANCHOR)
+
+    assert score.anchor_ref(same) == original == text_module.read_text_file(same).ref
+    assert score.anchor_ref(changed) != original
+
+
+def test_a_relative_anchor_file_is_a_path_in_the_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkout = tmp_path / "checkout"
+    monkeypatch.setattr(context, "REPO_ROOT", checkout)
+    absolute = tmp_path / "elsewhere.txt"
+
+    assert score.anchor_path("eval/anchors/x.txt") == checkout / "eval" / "anchors" / "x.txt"
+    assert score.anchor_path(str(absolute)) == absolute
+
+
+ANCHOR_REFUSALS: dict[str, str] = {
+    # sources/text.py's refusal of each file, which the anchor abort carries.
+    "missing": "FileNotFoundError",
+    "blank": "the text file holds no text",
+    "binary": "the text file holds NUL bytes",
+    "a folder": strict_json.NOT_REGULAR_FILE,
+    "a NUL in the path": "embedded null",
+}
+
+
+@pytest.mark.parametrize("unusable", sorted(ANCHOR_REFUSALS))
+def test_an_anchor_file_that_cannot_be_read_as_text_aborts(tmp_path: Path, unusable: str) -> None:
+    target = tmp_path / "anchor.txt"
+    named = str(target)
+    if unusable == "blank":
+        target.write_bytes(b" \n\t\n")
+    elif unusable == "binary":
+        target.write_bytes(b"%PDF-1.7\x00\x01")
+    elif unusable == "a folder":
+        target.mkdir()
+    elif unusable == "a NUL in the path":
+        named += "\x00.txt"
+    document = oos_document()
+    document["sources"][2]["anchor_file"] = named
+    labels_file = tmp_path / "labels.json"
+    labels_file.write_bytes(json.dumps(document).encode("utf-8"))
+
+    with pytest.raises(EvalAbortError) as aborted:
+        score.load_labels(labels_file)
+
+    message = aborted.value.message
+    assert message.startswith(f"{score.ABORT_ANCHOR}: {labels_file}: sources[2].anchor_file: ")
+    assert ANCHOR_REFUSALS[unusable] in message
+
+
+# --- out-of-sample criteria -------------------------------------------------------------
+
+TEN = tuple(Chapter(f"C{i}", i * 20, i * 20 + 20) for i in range(10))
+"""Ten 20 s chapters over the builder's 200 s video."""
+
+
+def video(
+    tips: Sequence[score.ScoredTip],
+    *,
+    ref: str = REF,
+    harm_titled: bool = False,
+    chapters: tuple[score.ChapterLabel, ...] = (),
+) -> score.ScoredSource:
+    label = score.SourceLabel(ref, chapters, harm_titled=harm_titled)
+    return source(tips, label=label, ref=ref, chapters=TEN)
+
+
+def per_window(*windows: int, first_id: int = 1, **fields: Any) -> list[score.ScoredTip]:
+    """One tip in each of ``windows`` (indexes into :data:`TEN`)."""
+
+    return [tip(first_id + n, start_s=TEN[w].start_s + 1, **fields) for n, w in enumerate(windows)]
+
+
+@pytest.mark.parametrize(
+    ("windows", "passed"),
+    [
+        (range(10), True),
+        (range(9), True),  # 9/10 windows, 9 tips: the boundary still passes
+        (range(8), False),  # 8/10 windows, 8 tips: the count holds, the coverage fails
+    ],
+)
+def test_oos1_needs_9_of_10_chapter_windows(windows: range, passed: bool) -> None:
+    held = result("OOS-1", evidence(video(per_window(*windows))))
+
+    assert held.passed is passed
+    if not passed:
+        assert held.failures == (
+            f"{REF}: 8/10 chapter windows hold a tip, expected at least 9/10; empty: C8; C9",
+        )
+
+
+@pytest.mark.parametrize(("count", "passed"), [(7, False), (9, True), (12, True), (13, False)])
+def test_oos1_needs_8_to_12_tips(count: int, passed: bool) -> None:
+    # Ten windows first, then the extra tips in windows that already hold one. Fewer than
+    # nine tips cannot cover 9 of 10 windows, so seven fails the coverage too.
+    tips = per_window(*range(min(count, 10))) + per_window(*range(count - 10), first_id=20)
+
+    held = result("OOS-1", evidence(video(tips)))
+
+    assert held.passed is passed
+    if not passed:
+        assert held.failures[0] == f"{REF} holds {count} tips, expected 8 to 12"
+
+
+def test_oos1_holds_the_is7_and_is8_invariants() -> None:
+    misplaced = per_window(*range(10))
+    misplaced[3] = replace(misplaced[3], bucket=3, list_ids=(1,))
+    filler = per_window(*range(10))
+    filler[5] = replace(filler[5], action="Like and subscribe")
+
+    placed = result("OOS-1", evidence(video(misplaced)))
+    subscribed = result("OOS-1", evidence(video(filler)))
+
+    assert len(placed.failures) == 1 and placed.failures[0].startswith(f"{REF}: IS-7: #4 ")
+    assert len(subscribed.failures) == 1
+    assert subscribed.failures[0].startswith(f"{REF}: IS-8: #6 ")
+
+
+def test_oos1_grades_neither_a_reference_nor_an_anchor() -> None:
+    graded = video(per_window(*range(10)))
+    reference = source([], label=score.SourceLabel(OTHER, (), reference=True), ref=OTHER)
+    anchor_ref = text_module.REF_PREFIX + "0" * 64
+    anchored = source(
+        [],
+        label=score.SourceLabel(anchor_ref, (), anchor=score.Anchor(Path("a.txt"), 0)),
+        ref=anchor_ref,
+    )
+
+    assert result("OOS-1", evidence(graded, reference, anchored)).passed
+
+
+TRACING = score.ChapterLabel("C0", score.Expect(bucket=2, audience="kids+", on_lists=()))
+"""OOS-2's label shape: bucket 2, kids+, on no list, so on the activities sheet's Kids+ group."""
+
+
+def sheet(**groups: Sequence[score.ScoredTip]) -> printing.ActivitiesSheet:
+    """An activities print payload holding ``groups`` (``kids`` is the kids+ group)."""
+
+    names = {"kids": limits.AUDIENCE_KIDS_PLUS, "adults": limits.AUDIENCE_ADULTS}
+    return printing.ActivitiesSheet(
+        generated_at=STAMP,
+        groups=tuple(
+            printing.ActivityGroup(
+                audience,
+                tuple(printing.PrintItem(item.name, item.action) for item in groups.get(key, ())),
+            )
+            for key, audience in names.items()
+        ),
+    )
+
+
+def oos2(found: score.ScoredTip, activities: printing.ActivitiesSheet | None) -> list[str]:
+    held = score.CRITERIA["OOS-2"].evaluate(
+        replace(evidence(video([found], chapters=(TRACING,))), activities=activities)
+    )
+    return list(held.failures)
+
+
+def test_oos2_needs_the_placement_and_the_kids_group_of_the_activities_sheet() -> None:
+    good = tip(1, bucket=2, audience="kids+", start_s=1)
+    prefix = f"{REF}: the tip in 'C0' (#1 'Plain Tip') "
+
+    assert oos2(good, sheet(kids=[good])) == []
+    assert oos2(good, sheet()) == [
+        prefix + "is not in the kids+ group of the activities print payload"
+    ]
+    assert oos2(good, sheet(adults=[good])) == [
+        prefix + "is not in the kids+ group of the activities print payload"
+    ]
+    assert oos2(good, None) == [prefix + "has no activities print payload to appear in"]
+    adults = replace(good, audience="adults")
+    assert oos2(adults, sheet(adults=[adults])) == [
+        prefix + "is adults, expected kids+; is not in the kids+ group of the activities print "
+        "payload"
+    ]
+    listed = replace(good, bucket=1, list_ids=(5,))
+    assert oos2(listed, sheet(kids=[listed])) == [
+        prefix + "is in bucket 1, expected 2; is on lists [5], expected no list"
+    ]
+
+
+def test_oos2_checks_the_print_payload_only_for_an_expected_activity() -> None:
+    daily = score.ChapterLabel("C0", score.Expect(bucket=1))
+    found = tip(1, bucket=1, start_s=1)
+
+    held = score.CRITERIA["OOS-2"].evaluate(
+        replace(evidence(video([found], chapters=(daily,))), activities=sheet())
+    )
+
+    assert held.passed
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["C3", "c3", "C3!", " c-3 ", "C\N{FULLWIDTH DIGIT THREE}"],
+)
+def test_oos3_fails_a_tip_named_with_its_harm_title(name: str) -> None:
+    tips = per_window(*range(10))
+    tips[3] = replace(tips[3], name=name)
+
+    held = result("OOS-3", evidence(video(tips, harm_titled=True)))
+
+    assert held.failures == (
+        f"{REF}: #4 {name!r} in the window 'C3' is named with the harm the chapter title names",
+    )
+    assert held.notes == (
+        f"{REF}: part 2 is the operator's (M4): every tip's action in these windows states the "
+        "healthy behavior",
+    )
+
+
+def test_oos3_checks_every_tip_in_a_window_and_only_harm_titled_videos() -> None:
+    tips = [*per_window(*range(10)), tip(20, name="C4", start_s=TEN[4].start_s + 5)]
+    elsewhere = per_window(*range(10))
+    elsewhere[2] = replace(elsewhere[2], name="C3")  # another window's title
+    healthy = per_window(*range(10))
+    healthy[3] = replace(healthy[3], name="Avoid C3")
+
+    assert not result("OOS-3", evidence(video(tips, harm_titled=True))).passed
+    assert result("OOS-3", evidence(video(elsewhere, harm_titled=True))).passed
+    assert result("OOS-3", evidence(video(healthy, harm_titled=True))).passed
+    assert result("OOS-3", evidence(video(tips))).passed  # not harm-titled
+
+
+def oos4(*tips_by_ref: tuple[str, list[score.ScoredTip]]) -> score.CriterionResult:
+    pair = score.ChapterPair(score.ChapterRef(REF, "C1"), score.ChapterRef(OTHER, "C2"))
+    sources = [video(tips, ref=ref) for ref, tips in tips_by_ref]
+    the_labels = replace(
+        labels([item.label for item in sources], criteria=["OOS-4"]), not_duplicate_pairs=(pair,)
+    )
+    return score.CRITERIA["OOS-4"].evaluate(evidence(*sources, the_labels=the_labels))
+
+
+def test_oos4_fails_either_tip_of_a_pair_as_a_duplicate_of_the_other() -> None:
+    a = tip(1, start_s=TEN[1].start_s)
+    b = tip(2, start_s=TEN[2].start_s)
+
+    assert oos4((REF, [a]), (OTHER, [b])).passed
+    assert oos4((REF, [a]), (OTHER, [replace(b, possible_duplicate_of=1)])).passed
+    assert oos4((REF, [a]), (OTHER, [replace(b, bucket=4, duplicate_of=7)])).passed
+    later = oos4((REF, [a]), (OTHER, [replace(b, bucket=4, duplicate_of=1)]))
+    earlier = oos4((REF, [replace(a, bucket=4, duplicate_of=2)]), (OTHER, [b]))
+    assert later.failures == (
+        f"{OTHER}: the tip in 'C2' (#2 'Plain Tip') has duplicate_of 1, the tip in 'C1' of "
+        f"{REF}: a false duplicate",
+    )
+    assert earlier.failures == (
+        f"{REF}: the tip in 'C1' (#1 'Plain Tip') has duplicate_of 2, the tip in 'C2' of "
+        f"{OTHER}: a false duplicate",
+    )
+    empty = oos4((REF, []), (OTHER, [b]))
+    assert empty.failures == (f"{REF}: no tip in the chapter window 'C1'",)
+
+
+ANCHOR_REF = text_module.REF_PREFIX + "0" * 64
+
+
+def test_oos5_needs_the_anchor_reviewed_with_no_tip_in_any_bucket() -> None:
+    label = score.SourceLabel(ANCHOR_REF, (), anchor=score.Anchor(Path("x/input-3.txt"), 0))
+
+    def anchored(*tips: score.ScoredTip) -> score.CriterionResult:
+        return result("OOS-5", evidence(source(tips, label=label, ref=ANCHOR_REF)))
+
+    assert anchored().passed
+    for bucket in limits.BUCKET_IDS:
+        failed = anchored(tip(1, bucket=bucket, start_s=None))
+        assert failed.failures == (
+            f"{ANCHOR_REF} (the anchor input-3.txt) holds 1 tips, expected 0: "
+            f"#1 'Plain Tip' in bucket {bucket}",
+        )
+
+
+@pytest.mark.parametrize(
+    ("expect", "fields", "misses"),
+    [
+        (score.Expect(bucket_any_of=(2, 3)), {"bucket": 3}, []),
+        (
+            score.Expect(bucket_any_of=(2, 3)),
+            {"bucket": 1},
+            ["is in bucket 1, expected one of [2, 3]"],
+        ),
+        (score.Expect(duplicate_of_name="Brush"), {"bucket": 4, "duplicate_of": 9}, []),
+        (
+            score.Expect(duplicate_of_name="Brush"),
+            {"bucket": 4},
+            ["has no duplicate_of, expected a duplicate of 'Brush'"],
+        ),
+        (
+            score.Expect(duplicate_of_name="Brush"),
+            {"bucket": 4, "duplicate_of": 8},
+            ["has duplicate_of 8 ('Floss'), expected a duplicate of 'Brush'"],
+        ),
+        (
+            score.Expect(duplicate_of_name="Brush"),
+            {"bucket": 4, "duplicate_of": 7},
+            ["has duplicate_of 7 (no stored tip), expected a duplicate of 'Brush'"],
+        ),
+    ],
+)
+def test_expectation_misses_of_the_out_of_sample_keys(
+    expect: score.Expect, fields: dict[str, Any], misses: list[str]
+) -> None:
+    names = {9: "Brush", 8: "Floss"}
+
+    assert score.expectation_misses(tip(1, **fields), expect, names) == misses
+    assert expect.placement  # IS-4 and OOS-2 check them
+
+
+def test_oos_s_reads_the_soft_groups_with_the_stored_duplicate_names() -> None:
+    group = score.SoftGroup(REF, ("C5",), 1, score.Expect(bucket=4, duplicate_of_name="Brush"))
+    found = tip(1, bucket=4, duplicate_of=9, start_s=TEN[5].start_s)
+    the_labels = labels(soft=[group], criteria=["OOS-S"])
+    held = evidence(video([found]), the_labels=the_labels)
+
+    assert not result("OOS-S", held).passed
+    assert result("OOS-S", replace(held, duplicate_names={9: "Brush"})).passed
+    assert score.CRITERIA["OOS-S"].check is score.CRITERIA["IS-S"].check
+
+
+def test_duplicate_targets_leave_out_a_value_that_is_no_tip_id() -> None:
+    tips = [tip(1, bucket=4, duplicate_of=5), tip(2, bucket=4, duplicate_of=ID_MAX + 1), tip(3)]
+
+    assert score.duplicate_targets(tips) == {5}
+
+
+# --- investigate criteria ---------------------------------------------------------------
+
+WIKI_REF = "wiki:en:Example_Book"
+ARTICLE = "https://en.wikipedia.org/wiki/Example_Book"
+HEADINGS = tuple(f"Ch.{n}: Idea {n}" for n in range(1, 12))
+"""The 11 "Ch.N" headings INV-2 counts, as the fixture article spells them."""
+
+
+def wiki_source(
+    tips: Sequence[score.ScoredTip],
+    *,
+    mode: str = SOURCE_MODE_INVESTIGATE,
+    kind: str = SOURCE_KIND_WIKI,
+    headings: Sequence[str] = HEADINGS,
+    degraded: bool = False,
+) -> score.ScoredSource:
+    sections = tuple(
+        Section(heading, 2, 10 * index)
+        for index, heading in enumerate([*headings, "Reception", "Chapter notes"])
+    )
+    the_packet = Packet(
+        source_ref=WIKI_REF,
+        kind=SOURCE_KIND_WIKI,
+        url=ARTICLE,
+        title="Example Book",
+        channel=None,
+        duration_s=None,
+        fetched_at=STAMP,
+        transcript=None,
+        text="Synthetic article text. " * 20,
+        sections=sections,
+    )
+    the_row = replace(row(ref=WIKI_REF, mode=mode), kind=kind, url=ARTICLE)
+    return score.scored_source(
+        label=score.SourceLabel(WIKI_REF, ()),
+        row=the_row,
+        ref_count=1,
+        packet=the_packet,
+        packet_sha256=PACKET_SHA,
+        archived=replace(archived(tips), mode=mode, degraded=degraded),
+        tips=tips,
+    )
+
+
+def cited(tip_id: int, heading: str, url: str | None = None) -> score.ScoredTip:
+    return tip(
+        tip_id,
+        start_s=None,
+        locator=heading,
+        evidence_url=f"https://example.org/{tip_id}" if url is None else url,
+    )
+
+
+def one_per_heading(*, headings: Sequence[str] = HEADINGS) -> list[score.ScoredTip]:
+    return [cited(index, heading) for index, heading in enumerate(headings, 1)]
+
+
+def test_inv1_needs_the_wiki_source_in_investigate_mode() -> None:
+    assert result("INV-1", evidence(wiki_source(one_per_heading()))).passed
+    extract = result("INV-1", evidence(wiki_source([], mode=SOURCE_MODE_EXTRACT)))
+    assert extract.failures == (f"{WIKI_REF} has mode 'extract', expected investigate",)
+    other_kind = result("INV-1", evidence(wiki_source([], kind=SOURCE_KIND_TEXT)))
+    assert other_kind.failures == (f"{WIKI_REF} is a text source, expected wiki",)
+
+
+def test_the_chapter_heading_pattern() -> None:
+    for heading in ("Ch.1: The Divided Self", "Ch.11", "Ch. 7 Love", "Ch.10: x"):
+        assert score.CHAPTER_HEADING.match(heading), heading
+    for heading in ("Chapter 1", "Reception", "Ch.A: x", "See Ch.1", "ch.1: lower", "Ch.12a"):
+        assert not score.CHAPTER_HEADING.match(heading), heading
+
+
+@pytest.mark.parametrize(("dropped", "passed"), [(0, True), (2, True), (3, False)])
+def test_inv2_needs_9_of_the_11_headings_cited_as_a_locator(dropped: int, passed: bool) -> None:
+    tips = one_per_heading()[: 11 - dropped]
+
+    held = result("INV-2", evidence(wiki_source(tips)))
+
+    assert held.passed is passed
+    if not passed:
+        assert held.failures == (
+            f"{WIKI_REF}: 8 of the 11 'Ch.N' headings have a tip whose locator equals the "
+            "heading, expected at least 9; none for: Ch.9: Idea 9; Ch.10: Idea 10; Ch.11: Idea 11",
+        )
+
+
+def test_inv2_counts_only_an_exact_locator_and_exactly_11_headings() -> None:
+    near = one_per_heading()
+    for index in range(3):  # 8 exact locators: three differ in case only
+        near[index] = replace(near[index], locator=HEADINGS[index].lower())
+    twelve = (*HEADINGS, "Ch.12: Idea 12")
+
+    assert not result("INV-2", evidence(wiki_source(near))).passed
+    for headings in (HEADINGS[:10], twelve):
+        held = result("INV-2", evidence(wiki_source(one_per_heading(), headings=headings)))
+        assert held.failures == (
+            f"{WIKI_REF}: the packet holds {len(headings)} 'Ch.N' headings, not the 11 INV-2 "
+            "counts",
+        )
+
+
+@pytest.mark.parametrize(
+    ("url", "passed"),
+    [
+        ("https://example.org/a", True),
+        ("http://example.org/a", True),
+        (None, False),
+        ("ftp://example.org/a", False),
+        ("https://", False),
+        ("example.org/a", False),
+        ("https://example.org/a b", False),
+    ],
+)
+def test_inv3_needs_an_http_url_on_every_tip(url: str | None, passed: bool) -> None:
+    tips = one_per_heading()
+    tips[4] = replace(tips[4], evidence_url=url)
+
+    held = result("INV-3", evidence(wiki_source(tips)))
+
+    assert held.passed is passed
+    if url is None:
+        assert held.failures == (f"{WIKI_REF}: #5 'Plain Tip' has no evidence_url",)
+    elif not passed:
+        assert held.failures == (f"{WIKI_REF}: #5 'Plain Tip' cites {url!r}, not an http(s) URL",)
+
+
+@pytest.mark.parametrize(
+    ("wikipedia", "passed"),
+    [(0, True), (5, True), (6, False), (11, False)],  # of 11 tips; 5 of 11 leaves 6 elsewhere
+)
+def test_inv4_needs_half_the_tips_to_cite_a_host_outside_wikipedia(
+    wikipedia: int, passed: bool
+) -> None:
+    hosts = ["https://en.wikipedia.org/wiki/A", "https://en.m.wikipedia.org/wiki/B"]
+    tips = [
+        replace(item, evidence_url=hosts[index % 2]) if index < wikipedia else item
+        for index, item in enumerate(one_per_heading())
+    ]
+
+    held = result("INV-4", evidence(wiki_source(tips)))
+
+    assert held.passed is passed
+    shown = f"{11 - wikipedia} of 11 tips cite a host outside wikipedia.org"
+    assert (held.failures if not passed else held.notes) == (
+        f"{WIKI_REF}: {shown}" + ("" if passed else ", expected at least half"),
+    )
+
+
+def test_inv4_holds_at_exactly_half_and_fails_without_tips() -> None:
+    half = [cited(1, HEADINGS[0]), cited(2, HEADINGS[1], ARTICLE)]
+    no_url = [cited(1, HEADINGS[0]), replace(cited(2, HEADINGS[1]), evidence_url=None)]
+    elsewhere_host = [cited(1, HEADINGS[0], "https://wikipedia.org.example.com/x")]
+
+    assert result("INV-4", evidence(wiki_source(half))).passed
+    assert result("INV-4", evidence(wiki_source(no_url))).passed  # 1 of 2 cite elsewhere
+    assert result("INV-4", evidence(wiki_source(elsewhere_host))).passed
+    assert not result("INV-4", evidence(wiki_source([]))).passed
+
+
+def test_inv5_is_the_is7_check() -> None:
+    assert score.CRITERIA["INV-5"].check is score.CRITERIA["IS-7"].check
+    misplaced = one_per_heading()
+    misplaced[0] = replace(misplaced[0], bucket=3, list_ids=(1,))
+
+    assert result("INV-5", evidence(wiki_source(one_per_heading()))).passed
+    assert not result("INV-5", evidence(wiki_source(misplaced))).passed
+
+
+def test_the_spot_check_takes_the_5_distinct_urls_with_the_lowest_sha256() -> None:
+    urls = [f"https://example.org/page-{n}" for n in range(8)]
+    oracle = sorted(urls, key=lambda url: hashlib.sha256(url.encode("utf-8")).hexdigest())[:5]
+    first = urls.index(oracle[0])  # two more tips cite the lowest URL
+    tips = [cited(n + 1, HEADINGS[n], url) for n, url in enumerate(urls)]
+    tips += [cited(20, HEADINGS[9], oracle[0]), cited(21, HEADINGS[10], oracle[0])]
+
+    checks = score.spot_checks(evidence(wiki_source(tips)))
+
+    assert [check.url for check in checks] == oracle
+    assert [check.sha256 for check in checks] == [
+        hashlib.sha256(url.encode("utf-8")).hexdigest() for url in oracle
+    ]
+    assert (checks[0].tip_id, checks[0].cited_by) == (first + 1, 3)
+    assert all(check.cited_by == 1 for check in checks[1:])
+    assert all(check.ref == WIKI_REF for check in checks)
+
+
+def test_the_spot_check_covers_only_investigate_sources_and_takes_fewer_urls_if_cited() -> None:
+    two = [cited(1, HEADINGS[0], "https://a.example/1"), cited(2, HEADINGS[1], ARTICLE)]
+
+    assert len(score.spot_checks(evidence(wiki_source(two)))) == 2
+    assert score.spot_checks(evidence(wiki_source(two, mode=SOURCE_MODE_EXTRACT))) == ()
+
+
+def test_inv6_is_the_operators_verdict_and_never_fails() -> None:
+    held = result("INV-6", evidence(wiki_source(one_per_heading())))
+    none = result("INV-6", evidence(wiki_source([], mode=SOURCE_MODE_EXTRACT)))
+
+    assert (held.gate, held.status, held.failures) == (score.OPERATOR, score.OPERATOR_STATUS, ())
+    assert held.notes == (
+        f"{WIKI_REF}: open the 5 spot-check URLs printed below; at least 4 of the 5 must open "
+        "and support their tip (the operator's verdict, recorded in the M5 result)",
+    )
+    assert none.notes == (
+        "no scored source in investigate mode cites a URL, so there is no spot check",
+    )
+    made = report(held)
+    assert made.verdict == score.PASS and made.failed == () and made.soft_failed == ()
+
+
+def test_a_degraded_proposal_is_reported_never_passed_and_exits_0() -> None:
+    summary = score.SourceSummary(WIKI_REF, 2, HOST_CODEX, "m", SKILL, PACKET_SHA, degraded=True)
+    failed = score.CriterionResult("INV-4", score.HARD, False, ("x",))
+    degraded = replace(report(failed), sources=(summary,))
+    passed = replace(report(score.CriterionResult("INV-1", score.HARD, True)), sources=(summary,))
+    aborted = replace(degraded, aborts=(score.Abort(score.ABORT_SOURCE_MISSING, "gone"),))
+
+    for made in (degraded, passed):
+        assert (made.verdict, made.exit_code) == (score.REPORTED_DEGRADED, EXIT_OK)
+        stored = made.to_json()
+        assert stored["degraded_sources"] == [WIKI_REF]
+        assert "degraded" not in stored  # one key, one type
+        assert stored["sources"][0]["degraded"] is True
+        assert made.lines()[-1] == f"verdict: {score.REPORTED_DEGRADED}"
+    assert degraded.failed == ("INV-4",)  # still reported
+    assert any(line.startswith(f"degraded: {WIKI_REF}: ") for line in degraded.lines())
+    assert (aborted.verdict, aborted.exit_code) == (score.ABORT, EXIT_EVAL_ABORT)
+
+
+def test_read_archive_reads_the_degraded_flag(tmp_path: Path) -> None:
+    write_archive(tmp_path, degraded=True)
+    assert score.read_archive(tmp_path, REF).degraded is True
+
+    write_archive(tmp_path, degraded="yes")
+    with pytest.raises(score.ArchiveError, match="has no degraded flag"):
+        score.read_archive(tmp_path, REF)
+
+
+def test_the_report_prints_the_spot_check_operator_status_and_bucket_spread() -> None:
+    check = score.SpotCheck(WIKI_REF, UNTRUSTED, "d" * 64, 7, UNTRUSTED, 3)
+    inv6 = score.CriterionResult("INV-6", score.OPERATOR, True)
+    summary = score.SourceSummary(
+        WIKI_REF, 3, HOST_CLAUDE_CODE, "m", SKILL, PACKET_SHA, buckets=((1, 2), (2, 0), (4, 1))
+    )
+    made = replace(report(inv6), sources=(summary,), spot_checks=(check,))
+    escaped = r"Title\x1b[2K\r\nverdict: PASS\x85\x9b1A\t\x7f"
+
+    printed = made.lines()
+
+    assert all(line.isprintable() for line in printed), printed
+    assert f"INV-6  {score.OPERATOR}  OPERATOR (the operator's verdict, not scored)" in printed
+    assert printed[2].endswith("; buckets 1: 2, 2: 0, 4: 1")
+    (spot,) = [line for line in printed if line.startswith("spot check: ")]
+    assert spot.startswith(f"spot check: {WIKI_REF}: {escaped}")
+    assert spot.endswith("and 2 more)")
+    stored = made.to_json()
+    assert stored["spot_checks"] == [check.to_json()]
+    assert stored["spot_checks"][0]["url"] == UNTRUSTED
+    assert stored["sources"][0]["buckets"] == {"1": 2, "2": 0, "4": 1}
+    assert stored["criteria"][0]["status"] == score.OPERATOR_STATUS

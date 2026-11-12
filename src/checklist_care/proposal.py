@@ -382,7 +382,10 @@ NOT_A_TIP_AUDIENCE: Final = f"must be one of {', '.join(AUDIENCES_TIP)}"
 """The problem with a value :func:`is_tip_audience` refuses."""
 
 
-def _is_http_url(value: str) -> bool:
+def is_http_url(value: str) -> bool:
+    """True for an ``http(s)`` URL with a host and no white space. ``propose`` checks a
+    tip's ``evidence_url`` with it, and the eval scorer's INV-3 a stored one."""
+
     if not value or any(char.isspace() for char in value):
         return False
     try:
@@ -713,7 +716,7 @@ def _check_evidence_url(
     evidence_url = checker.text(obj, index, "evidence_url", limit, optional=not envelope.cited)
     if evidence_url is None:
         return None
-    if not _is_http_url(evidence_url):
+    if not is_http_url(evidence_url):
         checker.add(
             index, "evidence_url", "must be an http(s) URL" + ("" if envelope.cited else " or null")
         )

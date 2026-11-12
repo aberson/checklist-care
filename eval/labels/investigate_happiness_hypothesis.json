@@ -1,0 +1,8 @@
+{
+  "schema": "checklist-care.labels/1",
+  "claim": "investigate: The Happiness Hypothesis, its Wikipedia article investigated on the web (M5)",
+  "sources": [
+    {"ref": "wiki:en:The_Happiness_Hypothesis", "chapters": []}
+  ],
+  "criteria": ["INV-1", "INV-2", "INV-3", "INV-4", "INV-5", "INV-6"]
+}
