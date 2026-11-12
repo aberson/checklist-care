@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>checklist-care v1 Build</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,600;7..72,700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column; what you can do; a wide map band; a typed timeline; where it landed. */
+:root {
+  color-scheme: light;
+  --bg: #f6f4ee;          /* printer paper */
+  --panel: #ffffff;
+  --fg: #1d2424;
+  --muted: #5a6463;
+  --line: #d6d8d2;
+  --accent: #1f6b66;      /* checklist ink */
+  --accent-soft: #dcefec;
+  --ok: #2e7a4c;
+  --ok-soft: #e0f1e6;
+  --open: #8a6512;
+  --open-soft: #f6edd6;
+  --font-display: "Literata", Georgia, serif;
+  --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121716; --panel: #1a2020; --fg: #e3e9e7; --muted: #97a3a1; --line: #2b3433;
+    --accent: #5fc0b6; --accent-soft: #163331; --ok: #6cc28e; --ok-soft: #173225;
+    --open: #e2bb5d; --open-soft: #33290f; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121716; --panel: #1a2020; --fg: #e3e9e7; --muted: #97a3a1; --line: #2b3433;
+  --accent: #5fc0b6; --accent-soft: #163331; --ok: #6cc28e; --ok-soft: #173225;
+  --open: #e2bb5d; --open-soft: #33290f; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 16px/1.6 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 64px;
+}
+.wrap { max-width: 980px; margin: 0 auto; display: grid; gap: 48px; }
+.col { max-width: 68ch; }
+h1, h2, h3 { font-family: var(--font-display); line-height: 1.15; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2rem, 4.5vw, 2.8rem); font-weight: 700; }
+h2 { font-size: 1.45rem; font-weight: 700; }
+h3 { font-size: 1.02rem; font-weight: 700; font-family: var(--font-body); }
+p { margin: 0; }
+.eyebrow { font: 500 0.78rem/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.lede { font-size: 1.12rem; color: var(--muted); }
+code, .mono { font-family: var(--font-mono); font-size: 0.88em; }
+code { background: var(--accent-soft); color: var(--fg); padding: 0.08em 0.35em; border-radius: 4px; overflow-wrap: anywhere; }
+header, section { display: grid; gap: 18px; }
+header { gap: 14px; }
+
+/* Stat strip */
+.stats { display: flex; flex-wrap: wrap; gap: 10px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; min-width: 0; }
+.stat b { display: block; font: 700 1.3rem/1.1 var(--font-display); }
+.stat span { font-size: 0.85rem; color: var(--muted); }
+
+/* What you can do now: styled like a printed checklist */
+.can { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 14px; }
+.can article { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.can h3::before { content: "\2610"; color: var(--accent); margin-right: 0.45em; font-weight: 400; }
+.cmd { font: 500 0.84rem/1.45 var(--font-mono); color: var(--accent); overflow-wrap: anywhere; }
+.can p { color: var(--muted); font-size: 0.95rem; }
+.caveat { border-left: 3px solid var(--open); padding: 10px 14px; background: var(--open-soft); border-radius: 0 6px 6px 0; max-width: 72ch; }
+
+/* Map */
+.map { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+.map svg { display: block; min-width: 900px; width: 100%; height: auto; }
+.n-box { fill: var(--bg); stroke: var(--line); stroke-width: 1.5; }
+.n-key { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+.n-title { fill: var(--fg); font: 700 14px var(--font-body); }
+.n-sub { fill: var(--muted); font: 400 11.5px var(--font-mono); }
+.edge { stroke: var(--accent); stroke-width: 2; fill: none; }
+.edge-dash { stroke: var(--muted); stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; }
+.e-label { fill: var(--accent); font: 500 11.5px var(--font-mono); }
+.e-label-muted { fill: var(--muted); font: 500 11.5px var(--font-mono); }
+.arrow { fill: var(--accent); }
+.arrow-muted { fill: var(--muted); }
+.map-note { color: var(--muted); font-size: 0.92rem; max-width: 72ch; }
+
+/* Timeline */
+.legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 0.85rem; color: var(--muted); }
+.chip { display: inline-block; font: 500 0.72rem/1 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; padding: 4px 7px; border-radius: 4px; border: 1px solid currentColor; white-space: nowrap; }
+.t-core { color: var(--accent); }
+.t-breadth { color: var(--ok); }
+.t-score { color: var(--open); }
+ol.timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border-left: 2px solid var(--line); margin-left: 8px; }
+ol.timeline li { position: relative; padding: 10px 0 14px 22px; display: grid; gap: 4px; }
+ol.timeline li::before { content: ""; position: absolute; left: -7px; top: 16px; width: 12px; height: 12px; border-radius: 50%; background: var(--panel); border: 2px solid var(--accent); }
+.t-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+.t-num { font: 500 0.8rem/1 var(--font-mono); color: var(--muted); }
+.t-title { font-weight: 700; }
+.t-body { color: var(--muted); font-size: 0.95rem; max-width: 72ch; }
+.t-meta { font: 400 0.8rem/1.4 var(--font-mono); color: var(--muted); }
+
+/* Landing ledger */
+table { border-collapse: collapse; width: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 0.95rem; }
+th { font: 500 0.78rem/1.2 var(--font-mono); text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); width: 32%; }
+tr:last-child td, tr:last-child th { border-bottom: 0; }
+.next { background: var(--panel); border: 1px solid var(--accent); border-radius: 8px; padding: 18px; display: grid; gap: 10px; }
+.next pre { margin: 0; font: 500 0.84rem/1.5 var(--font-mono); background: var(--accent-soft); padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
+footer { color: var(--muted); font-size: 0.85rem; }
+@media (max-width: 560px) {
+  th { width: auto; display: block; border-bottom: 0; padding-bottom: 2px; }
+  td { display: block; padding-top: 2px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="col">
+  <p class="eyebrow">checklist-care · Phase 1 · built 2026-11-08 to 2026-11-12</p>
+  <h1>The v1 build is in: from a video link to a printed room checklist</h1>
+  <p class="lede">All 16 build steps of the master plan landed. You can now feed checklist-care a
+  YouTube video, a book's Wikipedia page or plain text, review what the skill proposes, and print
+  one-line-per-item A4 sheets for each room. The scorer that measures the skill is in too.
+  What is left is yours: the six manual acceptance steps.</p>
+  <div class="stats" aria-label="Build totals">
+    <div class="stat"><b>16 / 16</b><span>build steps done</span></div>
+    <div class="stat"><b>#1–#16</b><span>issues closed</span></div>
+    <div class="stat"><b>1535</b><span>tests passing</span></div>
+    <div class="stat"><b>0 · 0</b><span>type errors · lint violations</span></div>
+    <div class="stat"><b>M1–M6</b><span>manual steps open</span></div>
+  </div>
+</header>
+
+<section aria-labelledby="can-h">
+  <h2 id="can-h">What you can do now</h2>
+  <div class="can">
+    <article>
+      <h3>Turn a YouTube video into tips</h3>
+      <p class="cmd">/checklist-ingest https://www.youtube.com/watch?v=LpeDuC2sQ-w</p>
+      <p>Run it in Claude Code inside the checkout, or ask Codex to use the checklist-ingest skill
+      (launch line in AGENTS.md <code>## Codex usage</code>). Chapter titles become tip names.</p>
+    </article>
+    <article>
+      <h3>Ingest pasted text or a text file</h3>
+      <p class="cmd">/checklist-ingest &lt;full path of a .txt file&gt;</p>
+      <p>Or paste the text after the command. Useful for articles and pages that are not on
+      Wikipedia.</p>
+    </article>
+    <article>
+      <h3>Investigate a book from its Wikipedia page</h3>
+      <p class="cmd">/checklist-ingest https://en.wikipedia.org/wiki/The_Happiness_Hypothesis</p>
+      <p>The skill reads the article, then searches the web for the book's advice. Each tip carries
+      an evidence URL. Without web search it runs in a marked degraded mode.</p>
+    </article>
+    <article>
+      <h3>Review and approve proposals</h3>
+      <p class="cmd">uv run checklist-care serve --build</p>
+      <p>Open <code>http://127.0.0.1:8450/#/review</code>. Approve, edit, re-bucket or mark "Left
+      out". Nothing prints until you approve it.</p>
+    </article>
+    <article>
+      <h3>Shape your library, rubrics and lists</h3>
+      <p class="cmd">#/library · #/buckets · #/lists</p>
+      <p>Add your own basics ("Brush your teeth"), edit each bucket's rubric, and manage room lists
+      with their cues. The skill reads the rubrics and cues on every ingest.</p>
+    </article>
+    <article>
+      <h3>Print A4 sheets</h3>
+      <p class="cmd">Lists → Coffee Machine — Adults → Print</p>
+      <p>One sheet per room and audience, plus a "Good to do now and then" activities sheet. Print
+      at 100% with browser headers and footers off.</p>
+    </article>
+    <article>
+      <h3>Score the skill against labels</h3>
+      <p class="cmd">uv run checklist-care --data-dir "&lt;eval dir&gt;" eval score --labels eval/labels/in_sample.json</p>
+      <p>Grades the database rows the skill stored, never a transcript. Exit 0 PASS, 1 a hard
+      criterion failed, 6 the input cannot give a verdict.</p>
+    </article>
+    <article>
+      <h3>Back up your data</h3>
+      <p class="cmd">uv run checklist-care backup</p>
+      <p>Writes a consistent copy of the database under
+      <code>%LOCALAPPDATA%\checklist-care\backups\</code>. Your data never enters the repo.</p>
+    </article>
+  </div>
+  <p class="caveat"><strong>Built and gated, not yet accepted by you.</strong> The live checks
+  (<code>uv run pytest -m live</code>, <code>scripts/smoke.py --live</code>), both hosts' in-sample
+  and out-of-sample runs, the book investigation and a real A4 print are manual steps M1–M6 in the
+  plan.</p>
+</section>
+
+<section aria-labelledby="map-h">
+  <h2 id="map-h">How the pieces fit</h2>
+  <p class="map-note">The skill only judges; tested code does every fetch, check and database write.
+  A bad proposal is rejected field by field and nothing is stored.</p>
+  <div class="map" role="img" aria-label="Data flow: a source goes through fetch to a packet, the checklist-ingest skill reads the packet and context and writes a proposal, propose validates it into the SQLite database, which the review app, the print sheets, context and eval score read.">
+    <svg viewBox="0 0 960 300" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="ahm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow-muted" d="M0,0 L10,5 L0,10 z"/></marker>
+      </defs>
+      <!-- Row 1: the ingest path -->
+      <rect class="n-box" x="10" y="30" width="160" height="70" rx="8"/>
+      <text class="n-title" x="24" y="58">Source</text>
+      <text class="n-sub" x="24" y="80">YouTube · Wikipedia · text</text>
+
+      <rect class="n-box" x="205" y="30" width="140" height="70" rx="8"/>
+      <text class="n-title" x="219" y="58">fetch</text>
+      <text class="n-sub" x="219" y="80">→ source packet</text>
+
+      <rect class="n-key" x="380" y="30" width="180" height="70" rx="8"/>
+      <text class="n-title" x="394" y="58">checklist-ingest</text>
+      <text class="n-sub" x="394" y="80">Claude Code · Codex</text>
+
+      <rect class="n-box" x="595" y="30" width="150" height="70" rx="8"/>
+      <text class="n-title" x="609" y="58">propose</text>
+      <text class="n-sub" x="609" y="80">validates every field</text>
+
+      <rect class="n-key" x="780" y="30" width="170" height="70" rx="8"/>
+      <text class="n-title" x="794" y="58">SQLite database</text>
+      <text class="n-sub" x="794" y="80">%LOCALAPPDATA%, private</text>
+
+      <path class="edge" d="M170 65 H203" marker-end="url(#ah)"/>
+      <path class="edge" d="M345 65 H378" marker-end="url(#ah)"/>
+      <path class="edge" d="M560 65 H593" marker-end="url(#ah)"/>
+      <text class="e-label" x="563" y="54">JSON</text>
+      <path class="edge" d="M745 65 H778" marker-end="url(#ah)"/>
+      <text class="e-label" x="748" y="54">pending</text>
+
+      <!-- Read bus from the database -->
+      <path class="edge-dash" d="M865 100 V150 H90"/>
+      <text class="e-label-muted" x="600" y="143">reads the database</text>
+      <path class="edge-dash" d="M90 150 V188" marker-end="url(#ahm)"/>
+      <path class="edge-dash" d="M510 150 V188" marker-end="url(#ahm)"/>
+      <path class="edge-dash" d="M675 150 V188" marker-end="url(#ahm)"/>
+
+      <!-- Row 2: readers -->
+      <rect class="n-box" x="10" y="190" width="170" height="70" rx="8"/>
+      <text class="n-title" x="24" y="218">eval score</text>
+      <text class="n-sub" x="24" y="240">labels → PASS / FAIL / ABORT</text>
+
+      <rect class="n-box" x="380" y="190" width="180" height="70" rx="8"/>
+      <text class="n-title" x="394" y="218">context</text>
+      <text class="n-sub" x="394" y="240">rubrics · cues · tips</text>
+      <path class="edge" d="M430 190 V102" marker-end="url(#ah)"/>
+      <text class="e-label" x="436" y="128">read each ingest</text>
+
+      <rect class="n-key" x="595" y="190" width="160" height="70" rx="8"/>
+      <text class="n-title" x="609" y="218">Review app</text>
+      <text class="n-sub" x="609" y="240">127.0.0.1:8450</text>
+
+      <rect class="n-box" x="790" y="190" width="160" height="70" rx="8"/>
+      <text class="n-title" x="804" y="218">A4 sheets</text>
+      <text class="n-sub" x="804" y="240">room × audience</text>
+      <path class="edge" d="M755 225 H788" marker-end="url(#ah)"/>
+      <text class="e-label" x="740" y="282">only approved tips print</text>
+    </svg>
+  </div>
+</section>
+
+<section aria-labelledby="tl-h">
+  <h2 id="tl-h">The 16 steps, in order</h2>
+  <div class="legend">
+    <span><span class="chip t-core">core path</span> Steps 1–8: one video to one printed sheet</span>
+    <span><span class="chip t-breadth">breadth</span> Steps 9–14: more sources and more editing</span>
+    <span><span class="chip t-score">scorer</span> Steps 15–16: measuring the skill</span>
+  </div>
+  <ol class="timeline">
+    <li><div class="t-head"><span class="t-num">Step 1</span><span class="t-title">Package, private data directory and database</span><span class="chip t-core">core path</span></div>
+      <p class="t-body">The data directory lives outside the repo and is refused inside any git checkout. The SQLite schema carries triggers for the placement rules.</p>
+      <p class="t-meta">#1 · 2026-11-08</p></li>
+    <li><div class="t-head"><span class="t-num">Step 2</span><span class="t-title">YouTube fetch to a source packet</span><span class="chip t-core">core path</span></div>
+      <p class="t-body">Transcript and chapters land in one packet file under the data directory.</p>
+      <p class="t-meta">#2 · 2026-11-08</p></li>
+    <li><div class="t-head"><span class="t-num">Step 3</span><span class="t-title">Skill contract: context out, proposals in</span><span class="chip t-core">core path</span></div>
+      <p class="t-body"><code>context</code> gives the skill the limits, rubrics, cues and existing tips; <code>propose</code> checks every field against <code>limits.py</code> and imports all or nothing.</p>
+      <p class="t-meta">#3 · 2026-11-08</p></li>
+    <li><div class="t-head"><span class="t-num">Step 4</span><span class="t-title">The checklist-ingest skill (YouTube)</span><span class="chip t-core">core path</span></div>
+      <p class="t-body">One canonical skill core with thin Claude Code and Codex adapters, kept thin by tests.</p>
+      <p class="t-meta">#4 · 2026-11-08</p></li>
+    <li><div class="t-head"><span class="t-num">Step 5</span><span class="t-title">Local server and app shell</span><span class="chip t-core">core path</span></div>
+      <p class="t-body">FastAPI on <code>127.0.0.1</code> only, serving the React app with hash routing.</p>
+      <p class="t-meta">#5 · 2026-11-08</p></li>
+    <li><div class="t-head"><span class="t-num">Step 6</span><span class="t-title">Review inbox</span><span class="chip t-core">core path</span></div>
+      <p class="t-body">Approve, edit, re-bucket or leave out each proposed tip.</p>
+      <p class="t-meta">#6 · 2026-11-08</p></li>
+    <li><div class="t-head"><span class="t-num">Step 7</span><span class="t-title">A4 print sheets</span><span class="chip t-core">core path</span></div>
+      <p class="t-body">Dense one-line-per-item sheets per room and audience plus the activities sheet, checked by Playwright print tests.</p>
+      <p class="t-meta">#7 · 2026-11-08 · 749 tests</p></li>
+    <li><div class="t-head"><span class="t-num">Step 8</span><span class="t-title">Smoke gate: one real cycle, end to end</span><span class="chip t-core">core path</span></div>
+      <p class="t-body">Needed a separate diagnosis first: several of the smoke script's safety checks could be deleted without any test failing. The fix made each check's test trigger the failure it guards against. The <code>--live</code> run waits for manual step M1.</p>
+      <p class="t-meta">#8 · 2026-11-11 · 767 tests</p></li>
+    <li><div class="t-head"><span class="t-num">Step 9</span><span class="t-title">Library and my own tips</span><span class="chip t-breadth">breadth</span></div>
+      <p class="t-body">Browse every tip and add your own basics.</p>
+      <p class="t-meta">#9 · 2026-11-11 · 776 tests</p></li>
+    <li><div class="t-head"><span class="t-num">Step 10</span><span class="t-title">Editable bucket rubrics</span><span class="chip t-breadth">breadth</span></div>
+      <p class="t-body">The rubric text the skill reads to choose a bucket is yours to edit.</p>
+      <p class="t-meta">#10 · 2026-11-11 · 786 tests</p></li>
+    <li><div class="t-head"><span class="t-num">Step 11</span><span class="t-title">List management and list cues</span><span class="chip t-breadth">breadth</span></div>
+      <p class="t-body">Create, order and edit lists and each list's cue, with an unplaced-tips panel.</p>
+      <p class="t-meta">#11 · 2026-11-11 · 804 tests</p></li>
+    <li><div class="t-head"><span class="t-num">Step 12</span><span class="t-title">Pasted text and text files</span><span class="chip t-breadth">breadth</span></div>
+      <p class="t-body">A second review round fixed how the skill quotes a title in each shell.</p>
+      <p class="t-meta">#12 · 2026-11-11 · 872 tests</p></li>
+    <li><div class="t-head"><span class="t-num">Step 13</span><span class="t-title">Wikipedia sources</span><span class="chip t-breadth">breadth</span></div>
+      <p class="t-body">Article text and sections through the MediaWiki Action API, one title per request.</p>
+      <p class="t-meta">#13 · 2026-11-11 · 1053 tests</p></li>
+    <li><div class="t-head"><span class="t-num">Step 14</span><span class="t-title">Book investigation mode</span><span class="chip t-breadth">breadth</span></div>
+      <p class="t-body">For a book page, the skill searches the web and each tip must carry an evidence URL.</p>
+      <p class="t-meta">#14 · 2026-11-11 · 1084 tests</p></li>
+    <li><div class="t-head"><span class="t-num">Step 15</span><span class="t-title">Acceptance scorer and in-sample labels</span><span class="chip t-score">scorer</span></div>
+      <p class="t-body">The hardest step: 13 review rounds. The six-lens review kept finding fresh minor points, so a written scope decision settled the open dispute and the last round used the five-reviewer code review. Each hard criterion has a "garbage" run that must fail.</p>
+      <p class="t-meta">#15 · 2026-11-12 · 1390 tests</p></li>
+    <li><div class="t-head"><span class="t-num">Step 16</span><span class="t-title">Out-of-sample and investigate criteria, garbage anchor</span><span class="chip t-score">scorer</span></div>
+      <p class="t-body">Settled its scope question with a plan note before round 2, then passed all six review lenses. Adds the 5 spot-check URLs, <code>REPORTED (degraded)</code> and a test that keeps out-of-sample titles out of the skill.</p>
+      <p class="t-meta">#16 · 2026-11-12 · 1535 tests</p></li>
+  </ol>
+</section>
+
+<section aria-labelledby="land-h">
+  <h2 id="land-h">Where it landed</h2>
+  <table>
+    <tr><th scope="row">Branch</th><td><code>master</code> on <code>aberson/checklist-care</code> (public)</td></tr>
+    <tr><th scope="row">Pushed</th><td>19 commits, <code>d4f3e91..2db8d75</code>; <code>origin/master</code> confirmed at <code>2db8d75</code></td></tr>
+    <tr><th scope="row">Commits</th><td>Build checkpoints <code>70cf627..bbf8840</code> (one per step); docs close-out <code>2db8d75</code>; this tour in a separate commit after it</td></tr>
+    <tr><th scope="row">Issues</th><td>#1–#16 closed by the build; posterity issue #17 created and closed</td></tr>
+    <tr><th scope="row">Quality gates</th><td>1535 passed, 1 skipped, 13 live tests deselected · mypy 0 errors · ruff check and format clean</td></tr>
+    <tr><th scope="row">Not landed</th><td>Your untracked root <code>package-lock.json</code> (an empty lockfile, left alone). Review advisories are listed in the plan's Phase 1 section, none gating.</td></tr>
+  </table>
+  <div class="next">
+    <h3>Your next move: manual step M1, the live checks</h3>
+    <pre>cd $env:USERPROFILE\dev\checklist-care
+uv run pytest -m live
+uv run python scripts/smoke.py --live</pre>
+    <p class="t-body">Then M2–M6 in <code>docs/plans/master_plan.md</code>: in-sample acceptance on
+    Claude Code and Codex, out-of-sample and the garbage anchor, the book investigation, and a real
+    A4 print.</p>
+  </div>
+</section>
+
+<footer>Generated by /repo-update on 2026-11-12 from the master plan, the build-phase report and git history.</footer>
+</div>
+</body>
+</html>
