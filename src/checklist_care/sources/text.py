@@ -22,9 +22,7 @@ writes anything. A text packet has ``transcript``, ``url``, ``channel`` and
 
 from __future__ import annotations
 
-import codecs
 import hashlib
-import stat
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +31,12 @@ from typing import Final
 from checklist_care.errors import FetchError, one_line
 from checklist_care.limits import SOURCE_KIND_TEXT
 from checklist_care.sources.packet import Packet
+from checklist_care.strict_json import (
+    NOT_REGULAR_FILE,
+    PRIMARY_ENCODING,
+    UTF16_BOMS,
+    is_regular_file,
+)
 
 # The ingest caps live here, not in limits.py: limits.py is the tip-text and enum
 # surface that `GET /api/meta` exports whole, and the web app never sees an ingest cap.
@@ -47,7 +51,6 @@ video, an archive) from being read whole: one normalized character comes from at
 four code points of at most four UTF-8 bytes each, so a text within ``TEXT_CHARS_MAX``
 fits in about 3.2 MB."""
 
-PRIMARY_ENCODING: Final = "utf-8-sig"
 FALLBACK_ENCODING: Final = "cp1252"
 ENCODINGS: Final = (PRIMARY_ENCODING, FALLBACK_ENCODING)
 """The decoding order of plan §4.3: UTF-8 (with or without a byte-order mark), then
@@ -57,13 +60,6 @@ NORMAL_FORM: Final = "NFC"
 REF_PREFIX: Final = f"{SOURCE_KIND_TEXT}:sha256:"
 TOO_LONG_HINT: Final = "too long; split it"
 """The refusal of plan §4.3 for a text over ``TEXT_CHARS_MAX`` characters."""
-
-UTF16_BOMS: Final = (codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)
-"""Byte-order marks of UTF-16 (and of UTF-32 LE, which starts like UTF-16 LE). Such a
-file is not refused by either decoder, only garbled, so it is caught first. Windows
-PowerShell 5.1's ``>`` and ``Out-File`` write UTF-16 LE. The check is on the bytes, so
-a Windows-1252 text that starts with ``ÿþ`` or ``þÿ`` (the same two bytes) is refused
-too; no advice text starts that way."""
 
 CP1252_WARNING: Final = (
     "the file is not UTF-8, so it was read as Windows-1252 (cp1252); if characters look "
@@ -107,6 +103,8 @@ def decode_text(data: bytes) -> tuple[str, str]:
     """The text of file bytes and the encoding that decoded them, ``utf-8-sig`` first,
     then ``cp1252``; :class:`FetchError` for UTF-16, NUL bytes or undecodable bytes."""
 
+    # On the bytes, so a Windows-1252 text that starts with "ÿþ" or "þÿ" (the same two
+    # bytes) is refused too; no advice text starts that way.
     if data.startswith(UTF16_BOMS):
         raise FetchError(
             f"the text file is UTF-16 (it starts with a UTF-16 byte-order mark); {_SAVE_AS_UTF8}"
@@ -155,11 +153,8 @@ def read_text_file(path: Path) -> SourceText:
 
     unreadable = f"cannot read the text file '{path}'"
     try:
-        if not stat.S_ISREG(path.stat().st_mode):
-            raise FetchError(
-                f"{unreadable}: it is not a regular file (a folder, a device or a pipe); "
-                "give the path of a text file"
-            )
+        if not is_regular_file(path):
+            raise FetchError(f"{unreadable}: {NOT_REGULAR_FILE}; give the path of a text file")
         with path.open("rb") as handle:
             data = handle.read(TEXT_FILE_MAX_BYTES + 1)
     except OSError as error:

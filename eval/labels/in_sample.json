@@ -1,0 +1,28 @@
+{
+  "schema": "checklist-care.labels/1",
+  "claim": "in-sample: operator labels on LpeDuC2sQ-w with RPK-xw3SrVw as duplicate reference",
+  "sources": [
+    {"ref": "youtube:RPK-xw3SrVw",
+     "chapters": [
+       {"title": "The Three-Second Mirror Check", "expect": {"bucket": 1, "on_any_of": [5, 6], "name": "exact"}}
+     ]},
+    {"ref": "youtube:LpeDuC2sQ-w",
+     "chapters": [
+       {"title": "Fire Your Morning Brain", "expect": {"bucket": 1, "on_lists": [1], "name": "exact"}},
+       {"title": "The Accountability Text", "expect": {"bucket": 2, "audience": "adults", "on_lists": [], "name": "exact"}},
+       {"title": "Sit Up Straight, You're Not Dead Yet", "expect": {"bucket": 1, "name": "exact"}}
+     ]}
+  ],
+  "duplicate_pairs": [{"a": ["youtube:RPK-xw3SrVw", "Drink Water Before Coffee"],
+                       "b": ["youtube:LpeDuC2sQ-w", "Your Brain Is A Raisin"], "list_if_first": 7}],
+  "soft": [
+    {"ref": "youtube:LpeDuC2sQ-w", "titles": ["The Two-Minute Brain Trick"],
+     "at_least": 1, "expect": {"bucket": 1, "audience": "kids+"}},
+    {"ref": "youtube:LpeDuC2sQ-w",
+     "titles": ["Make Laziness Your Superpower", "The Golden Rule of Habit-Building", "Your Alarm Is Lying To You"],
+     "at_least": 2, "expect": {"bucket": 3}},
+    {"ref": "youtube:RPK-xw3SrVw", "titles": ["The One-Side Hair Tuck"],
+     "at_least": 1, "expect": {"not_bucket": 1}}
+  ],
+  "criteria": ["IS-1", "IS-2", "IS-3", "IS-4", "IS-5", "IS-6", "IS-7", "IS-8", "IS-S"]
+}

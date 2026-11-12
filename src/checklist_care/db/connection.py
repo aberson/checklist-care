@@ -25,10 +25,14 @@ from checklist_care.errors import ConfigError
 SCHEMA_VERSION: Final = 1
 SCHEMA_RESOURCE: Final = "schema.sql"
 
+BUSY_TIMEOUT_PRAGMA: Final = "PRAGMA busy_timeout=5000"
+"""Wait up to 5 s for a lock instead of failing at once. :func:`connect` sets it (in
+:data:`PRAGMAS`), and so does the eval scorer's read-only open (``scoring/score.py``)."""
+
 PRAGMAS: Final = (
     # busy_timeout first: switching to WAL takes a lock that a concurrent first
     # open must wait for, not fail on.
-    "PRAGMA busy_timeout=5000",
+    BUSY_TIMEOUT_PRAGMA,
     "PRAGMA journal_mode=WAL",
     "PRAGMA synchronous=NORMAL",
     "PRAGMA foreign_keys=ON",
@@ -118,9 +122,8 @@ def connect(path: Path, *, check_same_thread: bool = True) -> sqlite3.Connection
     (``server/app.py``).
     """
 
-    conn = sqlite3.connect(path, isolation_level=None, check_same_thread=check_same_thread)
+    conn = open_connection(path, check_same_thread=check_same_thread)
     try:
-        conn.row_factory = sqlite3.Row
         for pragma in PRAGMAS:
             conn.execute(pragma)
         _apply_schema(conn, path)
@@ -132,6 +135,20 @@ def connect(path: Path, *, check_same_thread: bool = True) -> sqlite3.Connection
     except BaseException:
         conn.close()
         raise
+    return conn
+
+
+def open_connection(
+    database: str | Path, *, uri: bool = False, check_same_thread: bool = True
+) -> sqlite3.Connection:
+    """A connection with the settings every handle shares: autocommit mode
+    (``isolation_level=None``) and ``sqlite3.Row`` rows. :func:`connect` builds on it,
+    and so does the eval scorer's read-only open (``scoring/score.py``)."""
+
+    conn = sqlite3.connect(
+        database, uri=uri, isolation_level=None, check_same_thread=check_same_thread
+    )
+    conn.row_factory = sqlite3.Row
     return conn
 
 
