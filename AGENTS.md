@@ -35,7 +35,7 @@ Build gates are the commands `/build-step` runs. Shell for build gates: bash (Gi
 Windows). Every gate command is valid from build Step 1 onward.
 
 - Dependency install: `if [ -f pyproject.toml ]; then uv sync; fi; if [ -f web/package.json ]; then npm --prefix web install; fi`
-- Primary test command, the full DONE gate (it also runs the web suites once `web/` exists): `uv run pytest`
+- Primary test command, the full DONE gate (it also runs the web suites): `uv run pytest`
 - Lint: `uv run ruff check .`
 - Format check (a DONE-gate suite): `uv run ruff format --check .`
 - Typecheck: `uv run mypy src`
@@ -47,6 +47,7 @@ uv run checklist-care init
 uv run checklist-care status
 uv run checklist-care serve --build --port 8450
 uv run checklist-care backup
+uv run checklist-care --data-dir "<eval data dir>" eval score --labels eval/labels/in_sample.json
 npm --prefix web run dev
 uv run pytest -m live
 uv run python scripts/smoke.py --live
@@ -58,9 +59,8 @@ npx --yes playwright@1.63.0 install chromium
 - **Claude Code:** start `claude` inside the checkout, then run
   `/checklist-ingest <youtube-url | wikipedia-url | file path>`, or paste text after
   `/checklist-ingest`.
-- **Codex:** start it inside the checkout with the launch line in `## Codex usage`. Build Step 4
-  writes that section, and manual step M3 confirms it. Then ask it to use the checklist-ingest
-  skill on the input.
+- **Codex:** start it inside the checkout with the launch line in `## Codex usage` (manual step
+  M3 confirms that line). Then ask it to use the checklist-ingest skill on the input.
 - **Editing:** change the skill only in `skills/`. The two `SKILL.md` adapters stay thin, and
   `tests/test_skill_packages.py` checks them.
 
@@ -79,7 +79,7 @@ checklist-care/
   AGENTS.md  CLAUDE.md (@AGENTS.md pointer)  README.md  LICENSE
   pyproject.toml  uv.lock  .gitignore  .gitattributes
   docs/plans/master_plan.md     # canonical plan with ### Step N: blocks
-  src/checklist_care/           # cli, limits, paths, context, proposal, placement, printing, db/, sources/, store/, server/, scoring/
+  src/checklist_care/           # cli, limits, paths, context, proposal, placement, printing, processes, errors, strict_json, db/, sources/, store/, server/, scoring/
   web/                          # React app (dist/ and node_modules/ gitignored); e2e/ Playwright
   skills/                       # canonical skill core + shared proposal contract
   .claude/skills/               # Claude adapter (thin)
@@ -123,10 +123,17 @@ DB directly, and never reads `eval/`, `docs/` or `tests/`.
   `#/print/activities`.
 - Only approved tips print.
 
+**Acceptance.** `checklist-care eval score --labels <file>` grades the DB rows the skill stored
+(never a transcript) against a committed labels file in `eval/labels/`. It exits 0 on PASS (or
+`REPORTED (degraded)`), 1 when a hard criterion fails, and 6 (`CC_EVAL_ABORT`) when the input
+cannot give a verdict. It needs `--data-dir` or `CHECKLIST_CARE_DATA_DIR`.
+
 ## Current state
 
-The plan is written; there is no code yet. Next come `/plan-review`, `/plan-redline`,
-`/plan-wrap` and `/repo-init`, then `/build-phase` Steps 1–16, then the manual steps M1–M6.
+Phase 1 complete — the v1 build (Steps 1–16): ingest from YouTube, pasted text and text files,
+and Wikipedia (with book investigation); the review inbox, library, rubric and list editing; A4
+print sheets; and `eval score`. The full gate is green (1535 tests). Operator acceptance is open:
+the manual steps M1–M6 in the plan, starting with M1.
 
 ## Environment requirements
 

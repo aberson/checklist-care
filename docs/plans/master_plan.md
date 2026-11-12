@@ -1,8 +1,8 @@
 # checklist-care — Master Plan
 
 > Canonical plan for `checklist-care`. Authored by `/plan-init` on 2026-11-08 (greenfield).
-> Next in the fixed order: `/plan-review --autofix` → `/plan-redline` → `/plan-wrap --autofix` →
-> `/repo-init` (first publication) → `**Issue:**` backfill → `/build-phase`.
+> Build Steps 1–16 are done (see `## Phase 1 — v1 build (Steps 1–16)` below). Next: the manual
+> steps M1–M6, starting with M1.
 
 ## 1. What This Is
 
@@ -794,6 +794,8 @@ spread across buckets are reported, never gated.
 | `__init__.py` | `__version__`, `USER_AGENT`, `PROJECT_URL`. Step 1 sets it from `git remote get-url origin`, normalized to `https://github.com/<owner>/checklist-care` |
 | `cli.py` | `main(argv=None)`: the shared parent parser (`--data-dir`); subcommands `init`, `status`, `backup`, `fetch`, `context`, `propose`, `serve`, `eval score`. Reconfigures `sys.stdout`/`sys.stderr` to UTF-8 first; writes `data_dir:` to stderr; maps `CheckError` subclasses to exit codes. Any unexpected exception prints a one-line `CC_E_INTERNAL` message and exits 9, or 6 inside `eval score`, so a crash never looks like an eval FAIL. Ends with `if __name__ == "__main__": main()` |
 | `errors.py` | Stable codes and exit numbers (Appendix C) |
+| `processes.py` | Child processes with no console window and whole-process-tree kills; used by the yt-dlp runner and the npm build of `serve --build` |
+| `strict_json.py` | Strict JSON decoding of every file the skill or the operator writes: refuses repeated keys, `NaN`/`Infinity` and UTF-16/UTF-32 text; one `JsonFileError` per defect (single owner, Step 15 Scope decision) |
 | `limits.py` | §4.2 constants and enums, defined only here |
 | `paths.py` | Data-dir resolution and worktree refusal (§3.1), `source_key()`, subdirectory creation |
 | `db/connection.py` | `connect(path)` with the four pragmas and `sqlite3.Row`; applies `schema.sql` when `user_version` is 0 |
@@ -812,6 +814,8 @@ spread across buckets are reported, never gated.
 | `server/app.py` | `create_app(db_path)`. Mounts the routers and serves `web/dist` with lexical path checks (no `..`), or a "build required" page naming `npm --prefix web run build`. Static-asset pattern from `dev-observatory/src/dev_observatory/ambition/routes.py:228` (`_asset_dir()`). Closes DB handles on lifespan shutdown |
 | `server/run.py` | `serve [--port 8450] [--build] [--demo]`. Host is always `127.0.0.1` (no `--host` option). `WEB_DIR = Path(__file__).resolve().parents[3] / "web"`. `--build` runs `[shutil.which("npm"), "--prefix", str(WEB_DIR), "install", "--prefer-offline", "--no-audit", "--no-fund"]` when `WEB_DIR/node_modules` is absent, then `run build`; a missing npm exits 2 `CC_E_CONFIG`. `--demo` creates `%TEMP%\checklist-care-demo\<pid>-<8hex>` and first sweeps any sibling directory whose pid is no longer alive. Liveness on Windows is `OpenProcess` + `GetExitCodeProcess` via ctypes, where `STILL_ACTIVE` (259) means alive. Never use `os.kill(pid, 0)`, which terminates the process on Windows. Runs uvicorn with 1 worker |
 | `server/demo.py` | Self-written synthetic demo data (no third-party text). It is extended in Step 7 with the capacity lists |
+| `server/database.py` | The server's one SQLite handle (opened at startup, closed on lifespan shutdown), lent to one request at a time under a lock; the FastAPI dependency |
+| `server/models.py` | §6 request models: bounds and enums from `limits.py`, text rules from `proposal`, strict types; a failure is a 400 `CC_E_VALIDATION` naming the fields |
 | `server/routes_meta.py`, `routes_tips.py`, `routes_review.py`, `routes_lists.py`, `routes_buckets.py`, `routes_sources.py`, `routes_print.py` | §6 routes; request/response models built from `limits.py` |
 
 ### `web/` (React + Vite + TypeScript)
@@ -822,12 +826,16 @@ spread across buckets are reported, never gated.
 | `vite.config.ts` | `server` and `preview`: `host: "127.0.0.1"`, `port: 5450`, `strictPort: true`; proxy `/api` → `http://127.0.0.1:8450`. Loopback form from `yarvis/web/vite.config.ts` |
 | `src/main.tsx`, `src/App.tsx` | Hash router and nav: Review, Library, Lists, Buckets |
 | `src/api.ts`, `src/meta.ts` | Typed fetch over relative `/api/*`; loads `/api/meta` once |
+| `src/router.ts` | Hash routing with no router dependency (`#/review`, `#/library`, `#/lists`, `#/buckets`, `#/print/…`) |
+| `src/model.ts` | The API's tip, source and list shapes and the UI-side rules; limits always come from `/api/meta` |
+| `src/app.css`, `src/pages/NotFoundPage.tsx` | App styles; the unknown-route page |
 | `src/pages/ReviewPage.tsx` | Pending tips grouped by source. Inline edit; bucket/audience selects; compatible list checkboxes; duplicate and possible-duplicate badges linking to the original; YouTube deep link `https://www.youtube.com/watch?v=<id>&t=<start_s>s`; evidence link. Buttons: **Approve**, **Left out** (bucket 4 + approve), **Approve all for this source** |
 | `src/pages/LibraryPage.tsx` | Filters (bucket, status, audience, source); edit, move, delete; **Add my own tip** |
 | `src/pages/ListsPage.tsx` | Step 7: a read-only index with Print links and the "Not on any list yet" panel. Step 11: list CRUD (place, audience, cue), item order, add/remove tips, capacity and overlong-row warnings |
 | `src/pages/BucketsPage.tsx` | Edit bucket titles and rubrics |
 | `src/components/TipEditor.tsx` | Shared tip form with a live `LINE_MAX` counter |
-| `src/print/PrintListPage.tsx`, `PrintActivitiesPage.tsx`, `print.css` | §4.7 |
+| `src/print/PrintListPage.tsx`, `PrintActivitiesPage.tsx`, `PrintSheet.tsx`, `print.css` | §4.7; `PrintSheet.tsx` holds the shared screen controls, sheet header, one-line rows and per-row overflow measurement |
+| `src/fixtures/demoReview.json`, `src/testing/api.ts` | Test-only: the demo server's payloads and a fetch stub for vitest |
 | `playwright.config.ts`, `e2e/print.spec.ts` | `webServer`: `{ command: "uv run checklist-care serve --demo --port 8452", cwd: "..", url: "http://127.0.0.1:8452/api/health", timeout: 120000 }` (the bundle is pre-built by `pretest:print`) |
 
 ### Skills, eval and scripts
@@ -987,7 +995,7 @@ declared command is valid from Step 1, and the DONE gate is always the full suit
 Install, then start the app (`http://127.0.0.1:8450`):
 
 ```powershell
-git clone <github-url-from-repo-init> checklist-care
+git clone https://github.com/aberson/checklist-care.git checklist-care
 cd checklist-care
 uv sync
 npm --prefix web install
@@ -1911,6 +1919,77 @@ directories that M4 reuses.
   | Backup | A `.db` file under `%LOCALAPPDATA%\checklist-care\backups\` |
 
 After all Automated Steps complete, the orchestrator surfaces: **Please run M1 next.**
+
+---
+
+## Phase 1 — v1 build (Steps 1–16)
+
+**All 16 issues closed (#1–#16). 1535/1535 tests passing (1 skipped; 13 `live` tests deselected by
+the default gate). Zero type errors. Zero lint violations.** Built 2026-11-08 to 2026-11-12 by
+`/build-phase`. Operator acceptance (Steps M1–M6, and `## Manual UAT` M1) is still open.
+
+### What was built
+
+- Step 1: the package, the private data directory (refused inside a git checkout) and the SQLite
+  schema with its placement triggers.
+- Step 2: `checklist-care fetch` for YouTube: transcript and chapters into a source packet.
+- Step 3: the skill contract: `checklist-care context` out, `checklist-care propose` in, with every
+  field validated against `limits.py`.
+- Step 4: the `checklist-ingest` skill core, with thin Claude Code and Codex adapters.
+- Step 5: `checklist-care serve` (FastAPI on `127.0.0.1` only) and the React app shell.
+- Step 6: the review inbox (approve, edit, re-bucket, Left out).
+- Step 7: A4 print sheets per room and audience plus the activities sheet, with Playwright print
+  tests.
+- Step 8: `scripts/smoke.py`, the end-to-end smoke gate (`--offline` in the gate, `--live` in M1).
+- Step 9: the library and "Add my own tip".
+- Step 10: editable bucket rubrics.
+- Step 11: list management and list cues.
+- Step 12: pasted text and text files as sources.
+- Step 13: Wikipedia sources through the MediaWiki Action API.
+- Step 14: book investigation mode (evidence URLs; degraded without web search).
+- Step 15: `checklist-care eval score` with the in-sample criteria IS-1–IS-8, and the committed
+  in-sample labels.
+- Step 16: the out-of-sample (OOS-1–OOS-5) and investigate (INV-1–INV-5) criteria, the self-written
+  garbage anchor, the 5 spot-check URLs, `REPORTED (degraded)` and the no-leak test.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `src/checklist_care/` (`cli`, `limits`, `paths`, `context`, `proposal`, `placement`, `printing`, `processes`, `errors`, `strict_json`) | New: the CLI, limits, data-dir rules and proposal validation |
+| `src/checklist_care/db/` | New: `schema.sql`, connection and seed rows |
+| `src/checklist_care/sources/` | New: `youtube`, `text`, `wiki` and `packet` |
+| `src/checklist_care/store/` | New: buckets, lists, sources and tips |
+| `src/checklist_care/server/` | New: FastAPI app and routes (review, tips, lists, buckets, sources, print, meta) |
+| `src/checklist_care/scoring/score.py` | New: `eval score` (IS, OOS and INV criteria, aborts, spot checks) |
+| `skills/`, `.claude/skills/`, `.agents/skills/` | New: the skill core, the shared proposal contract and the two thin adapters |
+| `web/` | New: React app (pages, print views) and Playwright e2e tests |
+| `scripts/smoke.py` | New: the smoke gate |
+| `eval/labels/`, `eval/anchors/` | New: committed labels (ids and chapter titles only) and the garbage anchor |
+| `tests/` | New: unit, integration, skill-package and web-suite tests, with synthetic fixtures |
+
+### Fresh context notes for Phase 1
+
+| Issue | Detail |
+|---|---|
+| Live checks are not in the gate | `uv run pytest` deselects the 13 `live` tests; run `uv run pytest -m live` and `uv run python scripts/smoke.py --live` (M1) |
+| Scorer scope | Step 15's Scope decision and Step 16's Plan note settle which modules outside the Files lists the scorer may touch (single-owner consolidation only) |
+| Root `package-lock.json` | An untracked 93-byte empty lockfile in the operator's checkout, not part of the project; the web lockfile is `web/package-lock.json` |
+| `.claude/task-state/` | Excluded through this checkout's local `.git/info/exclude`, not `.gitignore`; a fresh clone shows hook-written task state as untracked |
+| `**Files:**` lists understate what shipped | Steps 5, 6, 7 and 9–14 also edited shared modules outside their Files lists (`cli.py`, `limits.py`, `proposal.py`, `store/*`, `server/app.py`, `server/models.py`, `web/src/{App,api,meta,model}`). §5 is the current module map; `git show --stat <checkpoint>` shows what a step really touched |
+| The skill surface changed after Step 4 | Steps 12 and 14 also edited both adapters, and Step 12 `skills/_shared/proposal-contract.md`. `skill_sha256` (D27) fingerprints the core, the shared contract and both adapters, so any edit there changes the fingerprint and `propose` rejects proposals made with the old one |
+
+**Open follow-ups from build review (advisory, none gating):**
+
+- Step 9: "Move to bucket 1" leaves the tip on no list.
+- Step 10: a whitespace-only edit marks a rubric as changed.
+- Step 11: a lost update on concurrent list item edits; list ids can be reused.
+- Step 12: re-fetching without `--title` clears the title; a title starting with `-` exits 2.
+- Step 13: an unplanned 60 s Retry-After cap; redirects are not pinned to the Wikipedia host.
+- Step 15: the whole-number test inline in `sources/wiki.py`; a check-then-open race in
+  `read_input`; a data dir on a UNC path cannot open the database; `--debug` tracebacks are not
+  escaped.
+- Step 16: `eval score --help` does not say that `REPORTED (degraded)` also exits 0.
 
 ## 12. Appendix
 

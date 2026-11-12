@@ -16,8 +16,11 @@ manage tips, bucket rubrics and lists, add your own basics, and print dense one-
 sheets. There is one sheet per room and audience (for example "Coffee Machine — Adults"), plus one
 "Good to do now and then" activities sheet.
 
-**Status:** planned, not built yet. The build follows
-[docs/plans/master_plan.md](docs/plans/master_plan.md), one GitHub issue per build step.
+**Phase 1 complete** — issues #1–16 closed. The whole v1 plan is built: YouTube, pasted-text and
+Wikipedia ingest (with book investigation), the review inbox, library, rubric and list editing, A4
+print sheets, and the `eval score` acceptance scorer. 1535 tests passing, 0 type errors, 0 lint
+violations. Operator acceptance (manual steps M1–M6 in
+[docs/plans/master_plan.md](docs/plans/master_plan.md)) is still open.
 
 ## Public code, private data
 
@@ -52,8 +55,6 @@ The code in this repository is public. Your data is not in it:
 - Network access to youtube.com and wikipedia.org. No API keys or secrets.
 
 ## Setup and first run
-
-Once the build steps have landed:
 
 1. Clone and install:
 
@@ -123,9 +124,10 @@ uv run ruff format --check .
 uv run mypy src
 ```
 
-`uv run pytest` is the full gate; once `web/` exists it also runs the web type check, vitest and
-the Playwright print tests. Live network checks are separate: `uv run pytest -m live`.
+`uv run pytest` is the full gate; it also runs the web type check, vitest and the Playwright print
+tests. Live network checks are separate: `uv run pytest -m live`, and the end-to-end smoke gate
+`uv run python scripts/smoke.py --live`.
 
 ## License
 
-MIT (added in build step 1).
+MIT — see [LICENSE](LICENSE).
