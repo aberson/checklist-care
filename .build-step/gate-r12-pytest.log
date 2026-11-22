@@ -1,0 +1,55 @@
+warning: `VIRTUAL_ENV=c:\Users\abero\dev\.venv-1` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+============================= test session starts =============================
+platform win32 -- Python 3.13.12, pytest-9.2.0, pluggy-1.7.0
+rootdir: c:\Users\abero\dev\worktree_build-step-20261112T013656Z-5ac91263
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 1396 items / 6 deselected / 1390 selected
+
+tests\integration\test_api_library.py .........                          [  0%]
+tests\integration\test_api_lists.py ..................                   [  1%]
+tests\integration\test_api_print.py ..........                           [  2%]
+tests\integration\test_api_review.py .......................             [  4%]
+tests\integration\test_cli_eval.py ..................................... [  6%]
+........................................................                 [ 11%]
+tests\integration\test_cli_fetch_text.py ..........................      [ 12%]
+tests\integration\test_cli_fetch_wiki.py ............................... [ 15%]
+..................................                                       [ 17%]
+tests\integration\test_cli_fetch_youtube.py ............................ [ 19%]
+.....................................                                    [ 22%]
+tests\integration\test_cli_init.py ..................................... [ 24%]
+.........................                                                [ 26%]
+tests\integration\test_cli_propose.py .................................. [ 29%]
+........................................                                 [ 32%]
+tests\integration\test_rubric_roundtrip.py .........                     [ 32%]
+tests\integration\test_server_shell.py ................................. [ 35%]
+..................................................                       [ 38%]
+tests\integration\test_smoke_script.py ................................. [ 41%]
+..........................................................               [ 45%]
+tests\test_skill_packages.py ........................................... [ 48%]
+.......                                                                  [ 48%]
+tests\test_web_suites.py .................                               [ 50%]
+tests\unit\test_archive_write.py ....                                    [ 50%]
+tests\unit\test_errors.py .............                                  [ 51%]
+tests\unit\test_limits.py .............................................. [ 54%]
+........                                                                 [ 55%]
+tests\unit\test_packet.py .........................                      [ 56%]
+tests\unit\test_paths.py ...................s...................         [ 59%]
+tests\unit\test_placement.py ............                                [ 60%]
+tests\unit\test_proposal_validate.py ................................... [ 63%]
+...............................................                          [ 66%]
+tests\unit\test_scorer_rules.py ........................................ [ 69%]
+........................................................................ [ 74%]
+................................................................         [ 79%]
+tests\unit\test_skill_fingerprint.py ...........                         [ 79%]
+tests\unit\test_strict_json.py .................................         [ 82%]
+tests\unit\test_text_normalize.py ...................................    [ 84%]
+tests\unit\test_wiki_text.py ..................                          [ 86%]
+tests\unit\test_wiki_url.py ............................................ [ 89%]
+.....................................................                    [ 93%]
+tests\unit\test_youtube_seams.py ................................        [ 95%]
+tests\unit\test_youtube_url.py ......................................... [ 98%]
+.......................                                                  [100%]
+
+========== 1389 passed, 1 skipped, 6 deselected in 617.67s (0:10:17) ==========

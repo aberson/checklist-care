@@ -1,0 +1,130 @@
+# Round 12 mutations
+Script: C:/Users/abero/AppData/Local/Temp/r12-mutate-5ac91263.sh (outside the repo).
+Started: 2026-11-12T02:31:24Z
+
+Phase pre: on the round-11 test, before the item-1 fix (expected: the 7-tip case SURVIVES).
+
+## mutation (pre): IN_SAMPLE_TIPS_MIN 8 -> 7 (round-11 test)
+file: src/checklist_care/scoring/score.py
+sha256 before: d39fe0f9dfa5d00e1b649ab47237a58caa163a851700e3f94ffbcd7f0a00d52f
+warning: `VIRTUAL_ENV=c:\Users\abero\dev\.venv-1` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+applied: 'IN_SAMPLE_TIPS_MIN: Final = 8' -> 'IN_SAMPLE_TIPS_MIN: Final = 7'
+pytest exit: 0
+tests/unit/test_scorer_rules.py::test_is2_needs_8_to_12_tips[7-False] PASSED
+tests/unit/test_scorer_rules.py::test_is2_needs_8_to_12_tips[8-True] PASSED
+tests/unit/test_scorer_rules.py::test_is2_needs_8_to_12_tips[12-True] PASSED
+tests/unit/test_scorer_rules.py::test_is2_needs_8_to_12_tips[13-False] PASSED
+====================== 4 passed, 169 deselected in 0.74s ======================
+restored sha256: d39fe0f9dfa5d00e1b649ab47237a58caa163a851700e3f94ffbcd7f0a00d52f (byte-for-byte OK)
+
+Phase post: after every round-12 edit (expected: each named case goes red, only it).
+Started: 2026-11-12T02:35:21Z
+
+## mutation (post): item 1: IN_SAMPLE_TIPS_MIN 8 -> 7
+file: src/checklist_care/scoring/score.py
+sha256 before: e0da7b59b6e350cc0de4a087d8e5bd724cf427ec87964544d79d707ee205ce71
+warning: `VIRTUAL_ENV=c:\Users\abero\dev\.venv-1` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+applied: 'IN_SAMPLE_TIPS_MIN: Final = 8' -> 'IN_SAMPLE_TIPS_MIN: Final = 7'
+pytest exit: 1
+tests/unit/test_scorer_rules.py::test_is2_needs_8_to_12_tips[7-False] FAILED
+tests/unit/test_scorer_rules.py::test_is2_needs_8_to_12_tips[8-True] PASSED
+tests/unit/test_scorer_rules.py::test_is2_needs_8_to_12_tips[12-True] PASSED
+tests/unit/test_scorer_rules.py::test_is2_needs_8_to_12_tips[13-False] PASSED
+FAILED tests/unit/test_scorer_rules.py::test_is2_needs_8_to_12_tips[7-False]
+E       assert True is False
+================= 1 failed, 3 passed, 172 deselected in 0.93s =================
+restored sha256: e0da7b59b6e350cc0de4a087d8e5bd724cf427ec87964544d79d707ee205ce71 (byte-for-byte OK)
+
+## mutation (post): item 2: score re-spells JSON_LIMIT_ERRORS (a local copy shadows the import)
+file: src/checklist_care/scoring/score.py
+sha256 before: e0da7b59b6e350cc0de4a087d8e5bd724cf427ec87964544d79d707ee205ce71
+warning: `VIRTUAL_ENV=c:\Users\abero\dev\.venv-1` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+applied: 'from checklist_care.strict_json import decode as decode_json\n' -> 'from checklist_care.strict_json import decode as decode_json\n\nJSON_LIMIT_ERRORS = (ValueError, RecursionError)\n'
+pytest exit: 1
+tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[text.PRIMARY_ENCODING] PASSED
+tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[text.UTF16_BOMS] PASSED
+tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[text.is_regular_file] PASSED
+tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[text.NOT_REGULAR_FILE] PASSED
+tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[score.is_regular_file] PASSED
+tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[score.NOT_REGULAR_FILE] PASSED
+tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[score.read_capped] PASSED
+tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[proposal.read_capped] PASSED
+tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[score.read_error_reason] PASSED
+tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[proposal.read_error_reason] PASSED
+tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[score.is_whole] PASSED
+tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[proposal.is_whole] PASSED
+tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[score.decode_json] PASSED
+tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[proposal.decode_json] PASSED
+tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[score.JsonFileError] PASSED
+tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[proposal.JsonFileError] PASSED
+tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[score.ENCODING_KINDS] PASSED
+tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[proposal.ENCODING_KINDS] PASSED
+tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[score.JSON_LIMIT_ERRORS] FAILED
+tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[proposal.BAD_CONSTANT] PASSED
+tests/integration/test_cli_eval.py::test_a_missing_or_malformed_cached_packet_aborts[missing] PASSED
+tests/integration/test_cli_eval.py::test_a_missing_or_malformed_cached_packet_aborts[not JSON] PASSED
+tests/integration/test_cli_eval.py::test_a_missing_or_malformed_cached_packet_aborts[JSON of the wrong shape] PASSED
+tests/integration/test_cli_eval.py::test_a_missing_or_malformed_cached_packet_aborts[JSON nested too deeply] PASSED
+tests/integration/test_cli_eval.py::test_a_missing_or_malformed_cached_packet_aborts[an integer over the int max-str-digits limit] PASSED
+FAILED tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[score.JSON_LIMIT_ERRORS]
+E       AssertionError: assert (<class 'ValueError'>, <class 'RecursionError'>) is (<class 'ValueError'>, <class 'RecursionError'>)
+================ 1 failed, 24 passed, 101 deselected in 7.34s =================
+restored sha256: e0da7b59b6e350cc0de4a087d8e5bd724cf427ec87964544d79d707ee205ce71 (byte-for-byte OK)
+
+## mutation (post): item 5: the labels surrogate check removed
+file: src/checklist_care/scoring/score.py
+sha256 before: e0da7b59b6e350cc0de4a087d8e5bd724cf427ec87964544d79d707ee205ce71
+warning: `VIRTUAL_ENV=c:\Users\abero\dev\.venv-1` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+applied: '    _refuse_surrogates(document)\n' -> ''
+pytest exit: 1
+tests/integration/test_cli_eval.py::test_an_unusable_labels_file_aborts_and_writes_nothing[missing] PASSED
+tests/integration/test_cli_eval.py::test_an_unusable_labels_file_aborts_and_writes_nothing[operator-only criterion id] PASSED
+tests/integration/test_cli_eval.py::test_an_unusable_labels_file_aborts_and_writes_nothing[a lone surrogate in the claim] FAILED
+tests/unit/test_scorer_rules.py::test_a_defective_labels_file_is_refused[unpaired surrogate in a chapter title] FAILED
+tests/unit/test_scorer_rules.py::test_a_defective_labels_file_is_refused[unpaired surrogate in a nested key] FAILED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.holds_surrogate] PASSED
+FAILED tests/integration/test_cli_eval.py::test_an_unusable_labels_file_aborts_and_writes_nothing[a lone surrogate in the claim]
+FAILED tests/unit/test_scorer_rules.py::test_a_defective_labels_file_is_refused[unpaired surrogate in a chapter title]
+FAILED tests/unit/test_scorer_rules.py::test_a_defective_labels_file_is_refused[unpaired surrogate in a nested key]
+E       assert 'labels-unusable' in "CC_EVAL_ABORT: eval score crashed, so there is no verdict; CC_E_INTERNAL: unexpected UnicodeEncodeError: 'utf-8' codec can't encode character '\\ud800' in position 574: surrogates not allowed"
+E       Failed: DID NOT RAISE LabelsError
+E       AssertionError: assert 'sources[0] holds an unpaired surrogate' in 'sources[0].chapters[0].expect has the unknown key(s) \udc00; the scorer never skips a label it cannot read'
+================= 3 failed, 3 passed, 263 deselected in 1.66s =================
+restored sha256: e0da7b59b6e350cc0de4a087d8e5bd724cf427ec87964544d79d707ee205ce71 (byte-for-byte OK)
+
+## mutation (post): item 5: score re-spells holds_surrogate (a local copy shadows the import)
+file: src/checklist_care/scoring/score.py
+sha256 before: e0da7b59b6e350cc0de4a087d8e5bd724cf427ec87964544d79d707ee205ce71
+warning: `VIRTUAL_ENV=c:\Users\abero\dev\.venv-1` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+applied: 'from checklist_care.strict_json import decode as decode_json\n' -> 'from checklist_care.strict_json import decode as decode_json\n\n\ndef holds_surrogate(*values: Any) -> bool:\n    return proposal.holds_surrogate(*values)\n'
+pytest exit: 1
+tests/unit/test_scorer_rules.py::test_a_defective_labels_file_is_refused[unpaired surrogate in a chapter title] PASSED
+tests/unit/test_scorer_rules.py::test_a_defective_labels_file_is_refused[unpaired surrogate in a nested key] PASSED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.HASH_FIELDS] PASSED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.is_sha256] PASSED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.is_id] PASSED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.is_bucket] PASSED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.NOT_A_BUCKET] PASSED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.is_tip_audience] PASSED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.NOT_A_TIP_AUDIENCE] PASSED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.TIP_TEXT_LIMITS] PASSED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.TIP_OPTIONAL] PASSED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.text_problem] PASSED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.line_problem] PASSED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.start_problem] PASSED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.holds_surrogate] FAILED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.placement_problems] PASSED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.BUSY_TIMEOUT_PRAGMA] PASSED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.open_connection] PASSED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.decode_source_packet] PASSED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.sibling_path] PASSED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.numbered_paths] PASSED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.lacks_hard_links] PASSED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[packet.sibling_path] PASSED
+tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[packet.lacks_hard_links] PASSED
+FAILED tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.holds_surrogate]
+E       AssertionError: assert <function holds_surrogate at 0x000001C66393BCE0> is <function holds_surrogate at 0x000001C663923E20>
+================ 1 failed, 23 passed, 152 deselected in 0.96s =================
+restored sha256: e0da7b59b6e350cc0de4a087d8e5bd724cf427ec87964544d79d707ee205ce71 (byte-for-byte OK)
+
+Finished: 2026-11-12T02:35:42Z

@@ -101,7 +101,14 @@ def read_source_packet(path: Path) -> tuple[str, packet_module.Packet]:
     one and ``PacketFormatError`` for a malformed one.
     """
 
-    data = path.read_bytes()
+    return decode_source_packet(path.read_bytes())
+
+
+def decode_source_packet(data: bytes) -> tuple[str, packet_module.Packet]:
+    """The sha256 and the parsed packet of packet file bytes; ``PacketFormatError`` for
+    malformed ones. :func:`read_source_packet` and the eval scorer's capped read
+    (``scoring/score.py``) both decode through it."""
+
     return hashlib.sha256(data).hexdigest(), packet_module.decode_packet(data)
 
 

@@ -5,7 +5,9 @@ with any character survives a Windows pipe whatever ``PYTHONIOENCODING`` is.
 Every command writes ``data_dir: <path>`` as its first stderr line; stdout stays
 clean for JSON. Expected failures are :class:`CheckError` subclasses and map to
 their exit codes; anything else prints one ``CC_E_INTERNAL`` line and exits 9
-(``--debug`` adds the traceback).
+(``--debug`` adds the traceback). Inside ``eval score`` every failure, from the data
+dir on, is ``CC_EVAL_ABORT`` with exit 6 instead, so it never looks like an eval
+verdict.
 """
 
 from __future__ import annotations
@@ -24,15 +26,20 @@ from checklist_care import __version__, paths, proposal
 from checklist_care import context as context_module
 from checklist_care.db import connection, seed
 from checklist_care.errors import (
+    CODE_EVAL_ABORT,
     CODE_INTERNAL,
+    EXIT_EVAL_ABORT,
+    EXIT_EVAL_FAIL,
     EXIT_INTERNAL,
     EXIT_OK,
     CheckError,
     ConfigError,
+    EvalAbortError,
     ProposalInvalidError,
     one_line,
 )
 from checklist_care.limits import BUCKET_IDS, TIP_STATUS_PENDING
+from checklist_care.scoring import score
 from checklist_care.server import DAILY_PORT, HOST
 from checklist_care.sources import packet, wiki, youtube
 from checklist_care.sources import text as text_source
@@ -195,6 +202,36 @@ def build_parser() -> argparse.ArgumentParser:
         help="serve synthetic demo data from a fresh temp directory instead of the data directory",
     )
     serve.set_defaults(handler=_cmd_serve)
+
+    evaluate = commands.add_parser(
+        "eval", parents=[common], help="acceptance testing of the skill (plan §4.8)"
+    )
+    eval_commands = evaluate.add_subparsers(
+        dest="eval_command", required=True, metavar="EVAL_COMMAND"
+    )
+    eval_score = eval_commands.add_parser(
+        "score",
+        parents=[common],
+        help="score the tips the skill stored against a labels file",
+        description=(
+            "Score the database rows the skill wrote (never a transcript) against a "
+            f"{score.LABELS_SCHEMA} labels file, and write "
+            f"<data-dir>/{paths.EVAL_DIR}/{score.SCORE_FILE_PREFIX}<ts>.json. Exits "
+            f"{EXIT_OK} on {score.PASS}, {EXIT_EVAL_FAIL} on {score.FAIL} and "
+            f"{EXIT_EVAL_ABORT} ({CODE_EVAL_ABORT}) when the input cannot give a verdict. "
+            f"Needs --data-dir or {paths.DATA_DIR_ENV}."
+        ),
+    )
+    eval_score.add_argument(
+        "--labels",
+        required=True,
+        metavar="FILE",
+        help="the labels file, such as eval/labels/in_sample.json",
+    )
+    eval_score.add_argument(
+        "--json", action="store_true", help="print the score as one JSON object"
+    )
+    eval_score.set_defaults(handler=_cmd_eval_score, eval_abort=True)
     return parser
 
 
@@ -259,36 +296,61 @@ def main(argv: Sequence[str] | None = None) -> int:
         return code if isinstance(code, int) else (EXIT_OK if code is None else 2)
     debug = bool(getattr(args, "debug", False))
     try:
-        data_dir = paths.resolve_data_dir(getattr(args, "data_dir", None))
-        _err(f"data_dir: {data_dir.path}")
-        paths.reject_git_checkout(data_dir.path)
+        data_dir = _data_dir(args)
         handler: Handler = args.handler
         return handler(args, data_dir)
     except CheckError as error:
-        _err(error.line())
+        line = error.line()
+        # An eval abort line can carry untrusted text (a labels key, a path), so it
+        # prints as inert text, as every report line does.
+        _err(score.printable(line) if _is_eval(args) else line)
         return error.exit_code
     except Exception as error:
         if debug:
             traceback.print_exc(file=sys.stderr)
-        _err(f"{CODE_INTERNAL}: unexpected {type(error).__name__}: {one_line(str(error))}")
+        crash = f"{CODE_INTERNAL}: unexpected {type(error).__name__}: {one_line(str(error))}"
+        if _is_eval(args):
+            # An eval that crashed has no verdict: exit 6, never a FAIL (plan Appendix C).
+            _err(
+                score.printable(
+                    f"{CODE_EVAL_ABORT}: eval score crashed, so there is no verdict; {crash}"
+                )
+            )
+            return EXIT_EVAL_ABORT
+        _err(crash)
         return EXIT_INTERNAL
 
 
-def _has_database(data_dir: paths.DataDir) -> bool:
-    # A zero-byte file is no database: opening it would apply the schema without
-    # the seed rows, a silently empty database.
-    db_path = data_dir.db_path
-    return db_path.is_file() and db_path.stat().st_size > 0
+def _is_eval(args: argparse.Namespace) -> bool:
+    """True inside ``eval score``, where every failure is an abort with no verdict (exit 6)."""
+
+    return bool(getattr(args, "eval_abort", False))
+
+
+def _data_dir(args: argparse.Namespace) -> paths.DataDir:
+    """The command's data directory, printed as the first stderr line and refused
+    (exit 2) inside a git checkout. Inside ``eval score`` a data dir that cannot be used
+    (an empty value, a git checkout) is an abort instead (exit 6, plan Appendix C)."""
+
+    try:
+        data_dir = paths.resolve_data_dir(getattr(args, "data_dir", None))
+        _err(f"data_dir: {data_dir.path}")
+        paths.reject_git_checkout(data_dir.path)
+    except ConfigError as error:
+        if _is_eval(args):
+            raise score.data_dir_abort(error) from error
+        raise
+    return data_dir
 
 
 def _require_database(data_dir: paths.DataDir) -> None:
-    if not _has_database(data_dir):
+    if not data_dir.has_database():
         raise ConfigError(f"no database at {data_dir.db_path}; run `checklist-care init` first")
 
 
 def _cmd_init(args: argparse.Namespace, data_dir: paths.DataDir) -> int:
     paths.ensure_layout(data_dir.path)
-    existed = _has_database(data_dir)
+    existed = data_dir.has_database()
     now = connection.format_timestamp(connection.utc_now())
     with closing(connection.connect(data_dir.db_path)) as conn:
         seed.seed_database(conn, now=now)
@@ -466,6 +528,27 @@ def _cmd_serve(args: argparse.Namespace, data_dir: paths.DataDir) -> int:
     if not args.demo:
         _require_database(data_dir)
     return run.serve(data_dir.db_path, port=args.port, build=args.build, demo_mode=args.demo)
+
+
+def _cmd_eval_score(args: argparse.Namespace, data_dir: paths.DataDir) -> int:
+    try:
+        report = score.run(data_dir, Path(args.labels))
+    except EvalAbortError:
+        raise
+    except CheckError as error:
+        # Inside an eval every expected failure is an abort: no verdict (exit 6).
+        raise EvalAbortError(error.line()) from error
+    if args.json:
+        # ASCII-only on stdout: every non-ASCII character, control codes included, is a
+        # JSON escape, so the parsed value is exact and nothing reaches the terminal raw.
+        payload = {**report.to_json(), "score_file": str(report.path)}
+        _out(json.dumps(payload, ensure_ascii=True, indent=2))
+    else:
+        for line in report.lines():
+            _out(line)
+    if report.verdict == score.ABORT:
+        raise EvalAbortError(report.abort_message())
+    return report.exit_code
 
 
 if __name__ == "__main__":
