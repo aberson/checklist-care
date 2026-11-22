@@ -1,0 +1,38 @@
+warning: `VIRTUAL_ENV=c:\Users\abero\dev\.venv-1` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+============================= test session starts =============================
+platform win32 -- Python 3.13.12, pytest-9.2.0, pluggy-1.7.0
+rootdir: C:\Users\abero\dev\worktree_build-step-20261109T061643Z-560ecdfc
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0
+collected 751 items / 1 deselected / 750 selected
+
+tests\integration\test_api_print.py ..........                           [  1%]
+tests\integration\test_api_review.py .......................             [  4%]
+tests\integration\test_cli_fetch_youtube.py ............................ [  8%]
+.....................................                                    [ 13%]
+tests\integration\test_cli_init.py ..................................... [ 18%]
+.........................                                                [ 21%]
+tests\integration\test_cli_propose.py .................................. [ 25%]
+....................                                                     [ 28%]
+tests\integration\test_server_shell.py ................................. [ 32%]
+..................................................                       [ 39%]
+tests\integration\test_smoke_script.py ................................. [ 44%]
+........................................                                 [ 49%]
+tests\test_skill_packages.py .................................           [ 53%]
+tests\test_web_suites.py .................                               [ 56%]
+tests\unit\test_archive_write.py ....                                    [ 56%]
+tests\unit\test_errors.py .............                                  [ 58%]
+tests\unit\test_limits.py .............................................. [ 64%]
+..                                                                       [ 64%]
+tests\unit\test_packet.py .........................                      [ 68%]
+tests\unit\test_paths.py ...................s...................         [ 73%]
+tests\unit\test_placement.py ............                                [ 74%]
+tests\unit\test_proposal_validate.py ................................... [ 79%]
+...............................................                          [ 85%]
+tests\unit\test_skill_fingerprint.py ...........                         [ 87%]
+tests\unit\test_youtube_seams.py ................................        [ 91%]
+tests\unit\test_youtube_url.py ......................................... [ 96%]
+.......................                                                  [100%]
+
+========== 749 passed, 1 skipped, 1 deselected in 192.60s (0:03:12) ===========
