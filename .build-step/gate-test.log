@@ -1,0 +1,15 @@
+warning: `VIRTUAL_ENV=c:\Users\abero\dev\.venv-1` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+============================= test session starts =============================
+platform win32 -- Python 3.13.12, pytest-9.2.0, pluggy-1.7.0
+rootdir: C:\Users\abero\dev\worktree_build-step-20261109T000407Z-5fbcae51
+configfile: pyproject.toml
+testpaths: tests
+collected 129 items
+
+tests\integration\test_cli_init.py ..................................... [ 28%]
+.........................                                                [ 48%]
+tests\unit\test_errors.py .........                                      [ 55%]
+tests\unit\test_limits.py ...................                            [ 69%]
+tests\unit\test_paths.py ...................s...................         [100%]
+
+======================= 128 passed, 1 skipped in 2.86s ========================
