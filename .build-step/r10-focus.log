@@ -1,0 +1,17 @@
+warning: `VIRTUAL_ENV=c:\Users\abero\dev\.venv-1` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+============================= test session starts =============================
+platform win32 -- Python 3.13.12, pytest-9.2.0, pluggy-1.7.0 -- C:\Users\abero\dev\worktree_build-step-20261111T190435Z-81eec54b\.venv\Scripts\python.exe
+rootdir: c:\Users\abero\dev\worktree_build-step-20261111T190435Z-81eec54b
+configfile: pyproject.toml
+plugins: anyio-4.16.0
+collecting ... collected 91 items / 84 deselected / 7 selected
+
+tests/integration/test_cli_eval.py::test_an_input_file_over_its_cap_or_not_a_regular_file_aborts_unread[archived proposal-one byte over its cap] PASSED [ 14%]
+tests/integration/test_cli_eval.py::test_an_input_file_over_its_cap_or_not_a_regular_file_aborts_unread[archived proposal-a folder] PASSED [ 28%]
+tests/integration/test_cli_eval.py::test_an_input_file_over_its_cap_or_not_a_regular_file_aborts_unread[cached packet-one byte over its cap] PASSED [ 42%]
+tests/integration/test_cli_eval.py::test_an_input_file_over_its_cap_or_not_a_regular_file_aborts_unread[cached packet-a folder] PASSED [ 57%]
+tests/integration/test_cli_eval.py::test_a_missing_or_malformed_cached_packet_aborts[missing] PASSED [ 71%]
+tests/integration/test_cli_eval.py::test_a_missing_or_malformed_cached_packet_aborts[not JSON] PASSED [ 85%]
+tests/integration/test_cli_eval.py::test_a_missing_or_malformed_cached_packet_aborts[JSON of the wrong shape] PASSED [100%]
+
+====================== 7 passed, 84 deselected in 2.82s =======================

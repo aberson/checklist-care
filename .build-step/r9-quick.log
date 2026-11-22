@@ -1,0 +1,51 @@
+warning: `VIRTUAL_ENV=c:\Users\abero\dev\.venv-1` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+........................................................................ [  8%]
+...........................................s............................ [ 17%]
+........................................................................ [ 26%]
+...........................F
+================================== FAILURES ===================================
+___ test_group_by_chapter_orders_each_window_by_id_and_keeps_empty_windows ____
+
+    def test_group_by_chapter_orders_each_window_by_id_and_keeps_empty_windows() -> None:
+>       tips = [tip(9, start_s=10), tip(3, start_s=50), tip(5, start_s=57), tip(7, start_s=None)]
+                ^^^^^^^^^^^^^^^^^^
+
+tests\unit\test_scorer_rules.py:258: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+tip_id = 9, name = 'Plain Tip', action = 'Do the plain thing'
+reason = 'Because it helps.', bucket = 3, audience = 'adults', start_s = 10
+list_ids = (), duplicate_of = None, possible_duplicate_of = None
+
+    def tip(
+        tip_id: int,
+        *,
+        name: str = "Plain Tip",
+        action: str = "Do the plain thing",
+        reason: str | None = "Because it helps.",
+        bucket: int = 3,
+        audience: str = "adults",
+        start_s: int | None = 10,
+        list_ids: tuple[int, ...] = (),
+        duplicate_of: int | None = None,
+        possible_duplicate_of: int | None = None,
+    ) -> score.ScoredTip:
+>       return score.ScoredTip(
+            id=tip_id,
+            name=name,
+            action=action,
+            reason=reason,
+            bucket=bucket,
+            audience=audience,
+            start_s=start_s,
+            list_ids=list_ids,
+            duplicate_of=duplicate_of,
+            possible_duplicate_of=possible_duplicate_of,
+        )
+E       TypeError: ScoredTip.__init__() missing 3 required positional arguments: 'locator', 'note', and 'evidence_url'
+
+tests\unit\test_scorer_rules.py:86: TypeError
+=========================== short test summary info ===========================
+FAILED tests/unit/test_scorer_rules.py::test_group_by_chapter_orders_each_window_by_id_and_keeps_empty_windows
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed, 242 passed, 1 skipped in 8.64s

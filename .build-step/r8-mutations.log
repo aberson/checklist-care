@@ -1,0 +1,49 @@
+## text.py re-spells PRIMARY_ENCODING instead of importing it
+file: src/checklist_care/sources/text.py; pytest tests/unit/test_strict_json.py -k holds_the_leafs_own_object
+exit 1 (RED)
+FAILED tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[text.PRIMARY_ENCODING]
+1 failed, 7 passed, 13 deselected in 0.42s
+restored byte for byte: True (sha256 95e27aa09c865bf74233bd1374204644e58d27e8b20f7f2740c44eb702be5afe)
+
+## score.py re-spells BUSY_TIMEOUT_PRAGMA instead of importing it
+file: src/checklist_care/scoring/score.py; pytest tests/unit/test_scorer_rules.py -k holds_its_owners_object
+exit 1 (RED)
+FAILED tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.BUSY_TIMEOUT_PRAGMA]
+1 failed, 4 passed, 132 deselected in 0.98s
+restored byte for byte: True (sha256 19dec5b0e35417cb97ea3b7b0f132a9317b4ddc7b7fd9141828e0b351b9d1aff)
+
+## packet.py re-spells sibling_path instead of importing it
+file: src/checklist_care/sources/packet.py; pytest tests/unit/test_scorer_rules.py -k holds_its_owners_object
+exit 1 (RED)
+FAILED tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[packet.sibling_path]
+1 failed, 4 passed, 132 deselected in 0.89s
+restored byte for byte: True (sha256 9edc4e0be314a349f13e49c41f7b99682aea4217276a3726f643fa1a410ef87d)
+
+## eval score prints its abort line without score.printable
+file: src/checklist_care/cli.py; pytest tests/integration/test_cli_eval.py -k labels_key_cannot
+exit 1 (RED)
+FAILED tests/integration/test_cli_eval.py::test_a_labels_key_cannot_add_or_drive_an_abort_line
+1 failed, 55 deselected in 0.92s
+restored byte for byte: True (sha256 ba7c880eea57f2c06ebc7897387f47bacd2bc1fa1b3421b84524044d62d3a852)
+
+## write_report makes the eval folder before its try block
+file: src/checklist_care/scoring/score.py; pytest tests/integration/test_cli_eval.py -k eval_path_that_is_a_file
+exit 1 (RED)
+FAILED tests/integration/test_cli_eval.py::test_an_eval_path_that_is_a_file_aborts_with_the_config_error
+1 failed, 55 deselected in 1.29s
+restored byte for byte: True (sha256 19dec5b0e35417cb97ea3b7b0f132a9317b4ddc7b7fd9141828e0b351b9d1aff)
+
+## the read-only URI built from the path as given (no os.path.abspath)
+file: src/checklist_care/scoring/score.py; pytest tests/unit/test_scorer_rules.py -k read_only_open
+exit 1 (RED)
+FAILED tests/unit/test_scorer_rules.py::test_the_read_only_open_takes_any_database_path_and_never_writes[relative]
+1 failed, 1 passed, 135 deselected in 1.17s
+restored byte for byte: True (sha256 19dec5b0e35417cb97ea3b7b0f132a9317b4ddc7b7fd9141828e0b351b9d1aff)
+
+## the read-only URI not percent-encoded (file:<path>)
+file: src/checklist_care/scoring/score.py; pytest tests/unit/test_scorer_rules.py -k read_only_open
+exit 1 (RED)
+FAILED tests/unit/test_scorer_rules.py::test_the_read_only_open_takes_any_database_path_and_never_writes[absolute]
+FAILED tests/unit/test_scorer_rules.py::test_the_read_only_open_takes_any_database_path_and_never_writes[relative]
+2 failed, 135 deselected in 1.20s
+restored byte for byte: True (sha256 19dec5b0e35417cb97ea3b7b0f132a9317b4ddc7b7fd9141828e0b351b9d1aff)

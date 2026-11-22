@@ -1,0 +1,26 @@
+warning: `VIRTUAL_ENV=c:\Users\abero\dev\.venv-1` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+......F................                                                  [100%]
+================================== FAILURES ===================================
+______________ test_each_defect_is_one_classified_error[cp1252] _______________
+
+defect = 'cp1252'
+
+    @pytest.mark.parametrize("defect", sorted(BAD_FILES))
+    def test_each_defect_is_one_classified_error(defect: str) -> None:
+        data, kind, message = BAD_FILES[defect]
+    
+        with pytest.raises(strict_json.JsonFileError) as caught:
+            strict_json.decode(data)
+    
+        assert caught.value.kind == kind
+>       assert caught.value.message.startswith(message)
+E       AssertionError: assert False
+E        +  where False = <built-in method startswith of str object at 0x000001F851D82970>('the file is not UTF-8 (byte 11 is invalid)')
+E        +    where <built-in method startswith of str object at 0x000001F851D82970> = 'the file is not UTF-8 (byte 10 is invalid)'.startswith
+E        +      where 'the file is not UTF-8 (byte 10 is invalid)' = JsonFileError('the file is not UTF-8 (byte 10 is invalid)').message
+E        +        where JsonFileError('the file is not UTF-8 (byte 10 is invalid)') = <ExceptionInfo JsonFileError('the file is not UTF-8 (byte 10 is invalid)') tblen=2>.value
+
+tests\unit\test_strict_json.py:78: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/unit/test_strict_json.py::test_each_defect_is_one_classified_error[cp1252]
+1 failed, 22 passed in 0.21s

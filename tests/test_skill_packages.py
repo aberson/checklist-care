@@ -48,6 +48,7 @@ from youtube_transcript_api import FetchedTranscript, FetchedTranscriptSnippet
 
 from checklist_care import cli, context, errors, limits, paths, processes, proposal
 from checklist_care.db import connection
+from checklist_care.scoring import score
 from checklist_care.sources import wiki, youtube
 
 ROOT = context.REPO_ROOT
@@ -88,7 +89,12 @@ LABELLED_TITLES = (
     "Your Brain Is A Raisin",
 )
 """The operator's labelled example names, plan Appendix B (all verbatim chapter titles).
-Step 15 moves the labels into ``eval/labels/``; until then the plan is their only home."""
+Step 15 put the in-sample labels in ``eval/labels/in_sample.json``; the leak check reads
+that file too (:data:`IN_SAMPLE_LABELS`)."""
+
+IN_SAMPLE_LABELS = ROOT / "eval" / "labels" / "in_sample.json"
+"""The committed in-sample labels: every chapter title they name is a labelled in-sample
+title the skill must not contain (plan §4.8)."""
 
 EVAL_VIDEO_IDS = ("LpeDuC2sQ-w", "RPK-xw3SrVw", "rgntlzYeaRM", "VbGMWtr0AJI")
 """The four evaluation videos (plan Appendix B); the skill's examples use made-up ids."""
@@ -1045,9 +1051,11 @@ def test_no_labelled_in_sample_title_appears_in_the_skill() -> None:
     files = [path for path in skill_tree_files() if path.is_file()]
     assert {ROOT / relative for relative in context.SKILL_FILES} <= set(files)
     # Appendix B's labelled names, plus every chapter title of the in-sample video
-    # (the Step 3 fixture carries the real titles), plus the evaluation video ids.
+    # (the Step 3 fixture carries the real titles), plus every chapter title the
+    # committed in-sample labels name, plus the evaluation video ids.
     titles = [*LABELLED_TITLES, *(c["title"] for c in fixture_json(PACKET_FIXTURE)["chapters"])]
     assert set(LABELLED_TITLES) & set(titles[len(LABELLED_TITLES) :])  # the fixture is in-sample
+    titles += [ref.title for ref in score.load_labels(IN_SAMPLE_LABELS).chapter_refs()]
     leaks = {
         str(path.relative_to(ROOT)): leaked_titles(path.read_text(encoding="utf-8"), titles)
         + [video for video in EVAL_VIDEO_IDS if video in path.read_text(encoding="utf-8")]

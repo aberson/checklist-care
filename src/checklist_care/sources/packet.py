@@ -22,6 +22,7 @@ from types import TracebackType
 from typing import Any, Final
 
 from checklist_care import paths
+from checklist_care.paths import lacks_hard_links, sibling_path
 
 PACKET_SCHEMA: Final = "checklist-care.packet/1"
 PACKET_SUFFIX: Final = ".json"
@@ -157,15 +158,11 @@ def encode_packet(packet: Packet) -> bytes:
     return (_render(packet.to_json(), "") + "\n").encode("utf-8")
 
 
-def _sibling(path: Path, suffix: str) -> Path:
-    return path.with_name(f".{path.name}.{os.getpid()}{suffix}")
-
-
 def write_packet(path: Path, packet: Packet) -> None:
     """Write the packet atomically: a reader sees the old file or the new one."""
 
     data = encode_packet(packet)
-    temporary = _sibling(path, ".tmp")
+    temporary = sibling_path(path, ".tmp")
     try:
         temporary.write_bytes(data)
         os.replace(temporary, path)
@@ -196,8 +193,8 @@ class PacketSwap:
     def __init__(self, path: Path, packet: Packet) -> None:
         self.path = path
         self._data = encode_packet(packet)
-        self._temporary = _sibling(path, ".tmp")
-        self._backup = _sibling(path, ".bak")
+        self._temporary = sibling_path(path, ".tmp")
+        self._backup = sibling_path(path, ".bak")
         self._old_kept: str | None = None
         """None (no old packet), ``"linked"`` (also still at ``path``) or ``"moved"``."""
         self._installed = False
@@ -216,17 +213,17 @@ class PacketSwap:
         self._backup.unlink(missing_ok=True)  # left by a crashed run with this pid
         try:
             os.link(self.path, self._backup)
-        except FileNotFoundError:
-            pass  # the first fetch of this source
-        except OSError:
-            # No hard links on this file system (FAT, some shares): move the old
-            # packet aside instead; a reader may then briefly find no file.
-            try:
-                os.replace(self.path, self._backup)
-            except FileNotFoundError:
-                pass  # the first fetch of this source
-            else:
-                self._old_kept = "moved"
+        except OSError as error:
+            if lacks_hard_links(error):
+                # No hard links on this file system (FAT, some shares): move the old
+                # packet aside instead; a reader may then briefly find no file.
+                try:
+                    os.replace(self.path, self._backup)
+                except FileNotFoundError:
+                    pass  # the first fetch of this source
+                else:
+                    self._old_kept = "moved"
+            # else no old packet to link: the first fetch of this source
         else:
             self._old_kept = "linked"
         try:

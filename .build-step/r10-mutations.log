@@ -1,0 +1,17 @@
+## the packet read drops OSError from its except tuple
+file: src\checklist_care\scoring\score.py; sha256 before b34356faa306d22a7a2f3fada6486b260343a5dd353107f3c44ce54f5f05296f, after restore b34356faa306d22a7a2f3fada6486b260343a5dd353107f3c44ce54f5f05296f; restored byte for byte
+exit 1: 1 failed, 3 passed in 6.68s
+  FAILED tests/integration/test_cli_eval.py::test_a_missing_or_malformed_cached_packet_aborts[missing]
+## the packet read drops PacketFormatError from its except tuple
+file: src\checklist_care\scoring\score.py; sha256 before b34356faa306d22a7a2f3fada6486b260343a5dd353107f3c44ce54f5f05296f, after restore b34356faa306d22a7a2f3fada6486b260343a5dd353107f3c44ce54f5f05296f; restored byte for byte
+exit 1: 2 failed, 2 passed in 1.24s
+  FAILED tests/integration/test_cli_eval.py::test_a_missing_or_malformed_cached_packet_aborts[not JSON]
+  FAILED tests/integration/test_cli_eval.py::test_a_missing_or_malformed_cached_packet_aborts[JSON of the wrong shape]
+## score.py re-spells PACKET_FILE_MAX_BYTES as a literal
+file: src\checklist_care\scoring\score.py; sha256 before b34356faa306d22a7a2f3fada6486b260343a5dd353107f3c44ce54f5f05296f, after restore b34356faa306d22a7a2f3fada6486b260343a5dd353107f3c44ce54f5f05296f; restored byte for byte
+exit 1: 1 failed, 3 passed in 1.13s
+  FAILED tests/unit/test_scorer_rules.py::test_the_packet_cap_holds_the_text_ingest_caps_object_not_a_copy
+## text.py's cap becomes a small interned int (the pin's own vacuity guard)
+file: src\checklist_care\sources\text.py; sha256 before 95e27aa09c865bf74233bd1374204644e58d27e8b20f7f2740c44eb702be5afe, after restore 95e27aa09c865bf74233bd1374204644e58d27e8b20f7f2740c44eb702be5afe; restored byte for byte
+exit 1: 1 failed in 0.60s
+  FAILED tests/unit/test_scorer_rules.py::test_the_packet_cap_holds_the_text_ingest_caps_object_not_a_copy

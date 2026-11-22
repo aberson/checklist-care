@@ -1,0 +1,13 @@
+== lines() prints without printable(): exit 1; 2 failed in 1.46s
+   FAILED tests/unit/test_scorer_rules.py::test_every_printed_report_path_escapes_untrusted_text_and_the_json_keeps_it
+   FAILED tests/integration/test_cli_eval.py::test_a_chapter_title_cannot_add_or_rewrite_a_printed_report_line
+== abort_message() without printable(): exit 1; 1 failed in 0.91s
+   FAILED tests/unit/test_scorer_rules.py::test_every_printed_report_path_escapes_untrusted_text_and_the_json_keeps_it
+== --json stdout with ensure_ascii=False: exit 1; 1 failed in 1.76s
+   FAILED tests/integration/test_cli_eval.py::test_a_chapter_title_cannot_add_or_rewrite_a_printed_report_line
+== Sit Up Straight label without name exact: exit 1; 2 failed, 13 passed in 3.65s
+   FAILED tests/integration/test_cli_eval.py::test_the_committed_labels_hold_every_in_sample_expectation_of_the_plan
+   FAILED tests/integration/test_cli_eval.py::test_a_garbage_run_through_propose_fails_exactly_its_criterion[IS-3 Sit Up Straight, You're Not Dead Yet]
+== Three-Second Mirror Check label without on_any_of: exit 1; 2 failed, 13 passed in 4.80s
+   FAILED tests/integration/test_cli_eval.py::test_the_committed_labels_hold_every_in_sample_expectation_of_the_plan
+   FAILED tests/integration/test_cli_eval.py::test_a_garbage_run_through_propose_fails_exactly_its_criterion[IS-4 The Three-Second Mirror Check]

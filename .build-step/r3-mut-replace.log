@@ -1,0 +1,39 @@
+warning: `VIRTUAL_ENV=c:\Users\abero\dev\.venv-1` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+F.                                                                       [100%]
+================================== FAILURES ===================================
+________________ test_the_score_file_holds_the_printed_result _________________
+
+capsys = <_pytest.capture.CaptureFixture object at 0x000002504808FE00>
+data_dir = WindowsPath('C:/Users/abero/AppData/Local/Temp/pytest-of-abero/pytest-27079/test_the_score_file_holds_the_0/data')
+videos = FakeVideos(packets={'RPK-xw3SrVw': {'schema': 'checklist-care.packet/1', 'source_ref': 'youtube:RPK-xw3SrVw', 'kind': ...3}, {'title': 'Your Brain Is A Raisin', 'start_s': 503, 'end_s': 563}], 'text': None, 'sections': [], 'warnings': []}})
+
+    def test_the_score_file_holds_the_printed_result(
+        capsys: pytest.CaptureFixture[str], data_dir: Path, videos: FakeVideos
+    ) -> None:
+        build_run(capsys, data_dir)
+    
+        first, second, third = (score_run(capsys, data_dir) for _ in range(3))
+    
+        assert first.payload is not None and second.payload is not None
+        assert third.payload is not None
+        target = data_dir / "eval" / SCORE_FILE
+        assert first.payload["score_file"] == str(target)
+        raw = target.read_bytes()
+        assert b"\r\n" not in raw
+        stored = json.loads(raw.decode("utf-8"))
+        assert stored == {key: value for key, value in first.payload.items() if key != "score_file"}
+        assert stored["schema"] == score.SCORE_SCHEMA
+        assert stored["scored_at"] == NOW_TEXT
+        # A later score in the same second never overwrites an earlier one.
+>       assert second.payload["score_file"] == str(data_dir / "eval" / "score-20261108-120000-2.json")
+E       AssertionError: assert 'C:\\Users\\a...8-120000.json' == 'C:\\Users\\a...120000-2.json'
+E         
+E         Skipping 116 identical leading characters in diff, use -v to show
+E         - 108-120000-2.json
+E         ?           --
+E         + 108-120000.json
+
+tests\integration\test_cli_eval.py:620: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/integration/test_cli_eval.py::test_the_score_file_holds_the_printed_result
+1 failed, 1 passed, 57 deselected in 1.07s

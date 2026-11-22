@@ -11,9 +11,10 @@ A directory inside a git checkout is refused. Follows
 from __future__ import annotations
 
 import hashlib
+import itertools
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -57,6 +58,13 @@ class DataDir:
         """True when the flag or the environment variable chose the directory."""
 
         return self.origin != "default"
+
+    def has_database(self) -> bool:
+        """True when :attr:`db_path` is a non-empty file. A zero-byte file is no
+        database: opening it would apply the schema without the seed rows, a silently
+        empty database."""
+
+        return self.db_path.is_file() and self.db_path.stat().st_size > 0
 
 
 def resolve_data_dir(
@@ -143,17 +151,37 @@ def file_stamp(moment: datetime) -> str:
     return moment.astimezone(UTC).strftime(FILE_STAMP_FORMAT)
 
 
+def numbered_paths(directory: Path, stem: str, suffix: str) -> Iterator[Path]:
+    """The names a new file in ``directory`` may take, in order and without end:
+    ``<stem><suffix>``, then ``<stem>-2<suffix>``, ``<stem>-3<suffix>`` …; the caller
+    takes the first one that is free."""
+
+    yield directory / f"{stem}{suffix}"
+    for counter in itertools.count(2):
+        yield directory / f"{stem}-{counter}{suffix}"
+
+
+def sibling_path(path: Path, suffix: str) -> Path:
+    """The dot-named sibling ``.<name>.<pid><suffix>`` of ``path``: this process's
+    temporary (``.tmp``) or backup (``.bak``) file next to it, hidden by its dot."""
+
+    return path.with_name(f".{path.name}.{os.getpid()}{suffix}")
+
+
+def lacks_hard_links(error: OSError) -> bool:
+    """True when :func:`os.link` failed with ``error`` because the file system has no
+    hard links (FAT, some shares): any ``OSError`` but ``FileNotFoundError``, which
+    means the file to link is missing. A caller that tells a taken name apart catches
+    ``FileExistsError`` before asking."""
+
+    return not isinstance(error, FileNotFoundError)
+
+
 def backup_path(data_dir: Path, moment: datetime) -> Path:
     """A not-yet-existing ``backups/checklist-care-<stamp>[-n].db`` path."""
 
-    directory = data_dir / BACKUPS_DIR
-    stem = f"{APP_DIR_NAME}-{file_stamp(moment)}"
-    candidate = directory / f"{stem}.db"
-    counter = 2
-    while candidate.exists():
-        candidate = directory / f"{stem}-{counter}.db"
-        counter += 1
-    return candidate
+    names = numbered_paths(data_dir / BACKUPS_DIR, f"{APP_DIR_NAME}-{file_stamp(moment)}", ".db")
+    return next(candidate for candidate in names if not candidate.exists())
 
 
 def source_key(ref: str) -> str:

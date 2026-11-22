@@ -1,0 +1,86 @@
+warning: `VIRTUAL_ENV=c:\Users\abero\dev\.venv-1` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+FF                                                                       [100%]
+================================== FAILURES ===================================
+________________ test_the_score_file_holds_the_printed_result _________________
+
+capsys = <_pytest.capture.CaptureFixture object at 0x000001BCA343FE00>
+data_dir = WindowsPath('C:/Users/abero/AppData/Local/Temp/pytest-of-abero/pytest-27080/test_the_score_file_holds_the_0/data')
+videos = FakeVideos(packets={'RPK-xw3SrVw': {'schema': 'checklist-care.packet/1', 'source_ref': 'youtube:RPK-xw3SrVw', 'kind': ...3}, {'title': 'Your Brain Is A Raisin', 'start_s': 503, 'end_s': 563}], 'text': None, 'sections': [], 'warnings': []}})
+
+    def test_the_score_file_holds_the_printed_result(
+        capsys: pytest.CaptureFixture[str], data_dir: Path, videos: FakeVideos
+    ) -> None:
+        build_run(capsys, data_dir)
+    
+        first, second, third = (score_run(capsys, data_dir) for _ in range(3))
+    
+        assert first.payload is not None and second.payload is not None
+        assert third.payload is not None
+        target = data_dir / "eval" / SCORE_FILE
+        assert first.payload["score_file"] == str(target)
+        raw = target.read_bytes()
+        assert b"\r\n" not in raw
+        stored = json.loads(raw.decode("utf-8"))
+        assert stored == {key: value for key, value in first.payload.items() if key != "score_file"}
+        assert stored["schema"] == score.SCORE_SCHEMA
+        assert stored["scored_at"] == NOW_TEXT
+        # A later score in the same second never overwrites an earlier one.
+        assert second.payload["score_file"] == str(data_dir / "eval" / "score-20261108-120000-2.json")
+        assert third.payload["score_file"] == str(data_dir / "eval" / "score-20261108-120000-3.json")
+        assert target.read_bytes() == raw
+        # Each file was published from a temporary name, and none is left behind.
+>       assert {path.name for path in (data_dir / "eval").iterdir()} == {
+            SCORE_FILE,
+            "score-20261108-120000-2.json",
+            "score-20261108-120000-3.json",
+        }
+E       AssertionError: assert {'.score-2026...-120000.json'} == {'score-20261...-120000.json'}
+E         
+E         Extra items in the left set:
+E         '.score-20261108-120000.json.33944.tmp'
+E         Use -v to get more diff
+
+tests\integration\test_cli_eval.py:624: AssertionError
+_ test_a_failure_while_writing_the_score_file_aborts_and_leaves_no_score_file _
+
+capsys = <_pytest.capture.CaptureFixture object at 0x000001BCA3A0E350>
+data_dir = WindowsPath('C:/Users/abero/AppData/Local/Temp/pytest-of-abero/pytest-27080/test_a_failure_while_writing_t0/data')
+videos = FakeVideos(packets={'RPK-xw3SrVw': {'schema': 'checklist-care.packet/1', 'source_ref': 'youtube:RPK-xw3SrVw', 'kind': ...3}, {'title': 'Your Brain Is A Raisin', 'start_s': 503, 'end_s': 563}], 'text': None, 'sections': [], 'warnings': []}})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001BCA339AD70>
+
+    def test_a_failure_while_writing_the_score_file_aborts_and_leaves_no_score_file(
+        capsys: pytest.CaptureFixture[str],
+        data_dir: Path,
+        videos: FakeVideos,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        build_run(capsys, data_dir)
+        real_open = io.open
+    
+        def disk_full_open(file: Any, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+            handle = real_open(file, mode, *args, **kwargs)
+            return DiskFullWriter(handle) if any(flag in mode for flag in "wxa") else handle
+    
+        with monkeypatch.context() as patch:
+            # Every file write in the run, whichever way the scorer opens it, fails halfway.
+            patch.setattr(io, "open", disk_full_open)
+            failed = score_run(capsys, data_dir)
+    
+        assert failed.code == 6
+        assert failed.out == ""
+        assert failed.err[-1].startswith(
+            f"CC_EVAL_ABORT: CC_E_CONFIG: cannot write the score file in {data_dir / 'eval'}: "
+        )
+        assert "No space left on device" in failed.err[-1]
+>       assert list((data_dir / "eval").iterdir()) == []  # no score file, no temporary file
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: assert [WindowsPath(...n.33944.tmp')] == []
+E         
+E         Left contains one more item: WindowsPath('C:/Users/abero/AppData/Local/Temp/pytest-of-abero/pytest-27080/test_a_failure_while_writing_t0/data/eval/.score-20261108-120000.json.33944.tmp')
+E         Use -v to get more diff
+
+tests\integration\test_cli_eval.py:678: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/integration/test_cli_eval.py::test_the_score_file_holds_the_printed_result
+FAILED tests/integration/test_cli_eval.py::test_a_failure_while_writing_the_score_file_aborts_and_leaves_no_score_file
+2 failed, 57 deselected in 0.70s

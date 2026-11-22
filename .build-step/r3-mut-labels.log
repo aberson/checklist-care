@@ -1,0 +1,243 @@
+warning: `VIRTUAL_ENV=c:\Users\abero\dev\.venv-1` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+..............FFF..F...............................................FFF.. [ 45%]
+........................................................................ [ 91%]
+..............                                                           [100%]
+================================== FAILURES ===================================
+_ test_the_proposal_and_labels_readers_refuse_the_same_bytes_alike[UTF-16 BE byte-order mark] _
+
+defect = 'UTF-16 BE byte-order mark'
+
+    @pytest.mark.parametrize("defect", sorted(BAD_FILES))
+    def test_the_proposal_and_labels_readers_refuse_the_same_bytes_alike(defect: str) -> None:
+        data, _, _ = BAD_FILES[defect]
+        with pytest.raises(strict_json.JsonFileError) as shared:
+            strict_json.decode(data)
+    
+        with pytest.raises(ProposalInvalidError) as as_proposal:
+            proposal.decode(data)
+        with pytest.raises(score.LabelsError) as as_labels:
+            score.parse_labels(data, Path("labels.json"))
+    
+        (problem,) = as_proposal.value.problems
+        assert problem.field == proposal.FILE_FIELD
+        assert problem.problem.startswith(shared.value.message)
+>       assert str(as_labels.value).startswith(shared.value.message)
+E       AssertionError: assert False
+E        +  where False = <built-in method startswith of str object at 0x000002386FA13430>('the file is UTF-16 (it starts with a UTF-16 byte-order mark)')
+E        +    where <built-in method startswith of str object at 0x000002386FA13430> = 'the labels has the unknown key(s) a, b; the scorer never skips a label it cannot read'.startswith
+E        +      where 'the labels has the unknown key(s) a, b; the scorer never skips a label it cannot read' = str(LabelsError('the labels has the unknown key(s) a, b; the scorer never skips a label it cannot read'))
+E        +        where LabelsError('the labels has the unknown key(s) a, b; the scorer never skips a label it cannot read') = <ExceptionInfo LabelsError('the labels has the unknown key(s) a, b; the scorer never skips a label it cannot read') tblen=3>.value
+E        +    and   'the file is UTF-16 (it starts with a UTF-16 byte-order mark)' = JsonFileError('the file is UTF-16 (it starts with a UTF-16 byte-order mark)').message
+E        +      where JsonFileError('the file is UTF-16 (it starts with a UTF-16 byte-order mark)') = <ExceptionInfo JsonFileError('the file is UTF-16 (it starts with a UTF-16 byte-order mark)') tblen=2>.value
+
+tests\unit\test_strict_json.py:96: AssertionError
+_ test_the_proposal_and_labels_readers_refuse_the_same_bytes_alike[UTF-16 LE byte-order mark] _
+
+defect = 'UTF-16 LE byte-order mark'
+
+    @pytest.mark.parametrize("defect", sorted(BAD_FILES))
+    def test_the_proposal_and_labels_readers_refuse_the_same_bytes_alike(defect: str) -> None:
+        data, _, _ = BAD_FILES[defect]
+        with pytest.raises(strict_json.JsonFileError) as shared:
+            strict_json.decode(data)
+    
+        with pytest.raises(ProposalInvalidError) as as_proposal:
+            proposal.decode(data)
+        with pytest.raises(score.LabelsError) as as_labels:
+            score.parse_labels(data, Path("labels.json"))
+    
+        (problem,) = as_proposal.value.problems
+        assert problem.field == proposal.FILE_FIELD
+        assert problem.problem.startswith(shared.value.message)
+>       assert str(as_labels.value).startswith(shared.value.message)
+E       AssertionError: assert False
+E        +  where False = <built-in method startswith of str object at 0x000002386FA11630>('the file is UTF-16 (it starts with a UTF-16 byte-order mark)')
+E        +    where <built-in method startswith of str object at 0x000002386FA11630> = 'the labels has the unknown key(s) a, b; the scorer never skips a label it cannot read'.startswith
+E        +      where 'the labels has the unknown key(s) a, b; the scorer never skips a label it cannot read' = str(LabelsError('the labels has the unknown key(s) a, b; the scorer never skips a label it cannot read'))
+E        +        where LabelsError('the labels has the unknown key(s) a, b; the scorer never skips a label it cannot read') = <ExceptionInfo LabelsError('the labels has the unknown key(s) a, b; the scorer never skips a label it cannot read') tblen=3>.value
+E        +    and   'the file is UTF-16 (it starts with a UTF-16 byte-order mark)' = JsonFileError('the file is UTF-16 (it starts with a UTF-16 byte-order mark)').message
+E        +      where JsonFileError('the file is UTF-16 (it starts with a UTF-16 byte-order mark)') = <ExceptionInfo JsonFileError('the file is UTF-16 (it starts with a UTF-16 byte-order mark)') tblen=2>.value
+
+tests\unit\test_strict_json.py:96: AssertionError
+_ test_the_proposal_and_labels_readers_refuse_the_same_bytes_alike[UTF-16 without a byte-order mark] _
+
+defect = 'UTF-16 without a byte-order mark'
+
+    @pytest.mark.parametrize("defect", sorted(BAD_FILES))
+    def test_the_proposal_and_labels_readers_refuse_the_same_bytes_alike(defect: str) -> None:
+        data, _, _ = BAD_FILES[defect]
+        with pytest.raises(strict_json.JsonFileError) as shared:
+            strict_json.decode(data)
+    
+        with pytest.raises(ProposalInvalidError) as as_proposal:
+            proposal.decode(data)
+        with pytest.raises(score.LabelsError) as as_labels:
+            score.parse_labels(data, Path("labels.json"))
+    
+        (problem,) = as_proposal.value.problems
+        assert problem.field == proposal.FILE_FIELD
+        assert problem.problem.startswith(shared.value.message)
+>       assert str(as_labels.value).startswith(shared.value.message)
+E       AssertionError: assert False
+E        +  where False = <built-in method startswith of str object at 0x000002386FB182B0>('the file holds NUL bytes, as UTF-16 or UTF-32 text does')
+E        +    where <built-in method startswith of str object at 0x000002386FB182B0> = 'the labels has the unknown key(s) a, b; the scorer never skips a label it cannot read'.startswith
+E        +      where 'the labels has the unknown key(s) a, b; the scorer never skips a label it cannot read' = str(LabelsError('the labels has the unknown key(s) a, b; the scorer never skips a label it cannot read'))
+E        +        where LabelsError('the labels has the unknown key(s) a, b; the scorer never skips a label it cannot read') = <ExceptionInfo LabelsError('the labels has the unknown key(s) a, b; the scorer never skips a label it cannot read') tblen=3>.value
+E        +    and   'the file holds NUL bytes, as UTF-16 or UTF-32 text does' = JsonFileError('the file holds NUL bytes, as UTF-16 or UTF-32 text does').message
+E        +      where JsonFileError('the file holds NUL bytes, as UTF-16 or UTF-32 text does') = <ExceptionInfo JsonFileError('the file holds NUL bytes, as UTF-16 or UTF-32 text does') tblen=2>.value
+
+tests\unit\test_strict_json.py:96: AssertionError
+_ test_the_proposal_and_labels_readers_refuse_the_same_bytes_alike[one NUL byte] _
+
+defect = 'one NUL byte'
+
+    @pytest.mark.parametrize("defect", sorted(BAD_FILES))
+    def test_the_proposal_and_labels_readers_refuse_the_same_bytes_alike(defect: str) -> None:
+        data, _, _ = BAD_FILES[defect]
+        with pytest.raises(strict_json.JsonFileError) as shared:
+            strict_json.decode(data)
+    
+        with pytest.raises(ProposalInvalidError) as as_proposal:
+            proposal.decode(data)
+        with pytest.raises(score.LabelsError) as as_labels:
+            score.parse_labels(data, Path("labels.json"))
+    
+        (problem,) = as_proposal.value.problems
+        assert problem.field == proposal.FILE_FIELD
+        assert problem.problem.startswith(shared.value.message)
+>       assert str(as_labels.value).startswith(shared.value.message)
+E       AssertionError: assert False
+E        +  where False = <built-in method startswith of str object at 0x000002386FB19730>('the file holds NUL bytes, as UTF-16 or UTF-32 text does')
+E        +    where <built-in method startswith of str object at 0x000002386FB19730> = 'the labels has the unknown key(s) a; the scorer never skips a label it cannot read'.startswith
+E        +      where 'the labels has the unknown key(s) a; the scorer never skips a label it cannot read' = str(LabelsError('the labels has the unknown key(s) a; the scorer never skips a label it cannot read'))
+E        +        where LabelsError('the labels has the unknown key(s) a; the scorer never skips a label it cannot read') = <ExceptionInfo LabelsError('the labels has the unknown key(s) a; the scorer never skips a label it cannot read') tblen=3>.value
+E        +    and   'the file holds NUL bytes, as UTF-16 or UTF-32 text does' = JsonFileError('the file holds NUL bytes, as UTF-16 or UTF-32 text does').message
+E        +      where JsonFileError('the file holds NUL bytes, as UTF-16 or UTF-32 text does') = <ExceptionInfo JsonFileError('the file holds NUL bytes, as UTF-16 or UTF-32 text does') tblen=2>.value
+
+tests\unit\test_strict_json.py:96: AssertionError
+_ test_a_utf16_or_nul_holding_labels_file_is_refused_before_it_is_decoded[UTF-16 LE byte-order mark] _
+
+tmp_path = WindowsPath('C:/Users/abero/AppData/Local/Temp/pytest-of-abero/pytest-27081/test_a_utf16_or_nul_holding_la0')
+encode = <function <lambda> at 0x000002386FABE980>
+message = 'the file is UTF-16 (it starts with a UTF-16 byte-order mark); save the labels as UTF-8'
+
+    @pytest.mark.parametrize(
+        ("encode", "message"),
+        [
+            (
+                lambda text: codecs.BOM_UTF16_LE + text.encode("utf-16-le"),
+                "the file is UTF-16 (it starts with a UTF-16 byte-order mark); "
+                "save the labels as UTF-8",
+            ),
+            (
+                lambda text: codecs.BOM_UTF16_BE + text.encode("utf-16-be"),
+                "the file is UTF-16 (it starts with a UTF-16 byte-order mark); "
+                "save the labels as UTF-8",
+            ),
+            (
+                lambda text: text.encode("utf-8").replace(b" ", b"\x00", 1),
+                "the file holds NUL bytes, as UTF-16 or UTF-32 text does; save the labels as UTF-8",
+            ),
+        ],
+        ids=["UTF-16 LE byte-order mark", "UTF-16 BE byte-order mark", "a NUL byte"],
+    )
+    def test_a_utf16_or_nul_holding_labels_file_is_refused_before_it_is_decoded(
+        tmp_path: Path, encode: Callable[[str], bytes], message: str
+    ) -> None:
+        # The committed labels themselves, saved in the wrong encoding or holding one NUL.
+        data = encode(LABELS.read_bytes().decode("utf-8"))
+        labels_file = tmp_path / "labels.json"
+        labels_file.write_bytes(data)
+    
+>       with pytest.raises(score.LabelsError) as raised:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE LabelsError
+
+tests\unit\test_scorer_rules.py:382: Failed
+_ test_a_utf16_or_nul_holding_labels_file_is_refused_before_it_is_decoded[UTF-16 BE byte-order mark] _
+
+tmp_path = WindowsPath('C:/Users/abero/AppData/Local/Temp/pytest-of-abero/pytest-27081/test_a_utf16_or_nul_holding_la1')
+encode = <function <lambda> at 0x000002386FABEA20>
+message = 'the file is UTF-16 (it starts with a UTF-16 byte-order mark); save the labels as UTF-8'
+
+    @pytest.mark.parametrize(
+        ("encode", "message"),
+        [
+            (
+                lambda text: codecs.BOM_UTF16_LE + text.encode("utf-16-le"),
+                "the file is UTF-16 (it starts with a UTF-16 byte-order mark); "
+                "save the labels as UTF-8",
+            ),
+            (
+                lambda text: codecs.BOM_UTF16_BE + text.encode("utf-16-be"),
+                "the file is UTF-16 (it starts with a UTF-16 byte-order mark); "
+                "save the labels as UTF-8",
+            ),
+            (
+                lambda text: text.encode("utf-8").replace(b" ", b"\x00", 1),
+                "the file holds NUL bytes, as UTF-16 or UTF-32 text does; save the labels as UTF-8",
+            ),
+        ],
+        ids=["UTF-16 LE byte-order mark", "UTF-16 BE byte-order mark", "a NUL byte"],
+    )
+    def test_a_utf16_or_nul_holding_labels_file_is_refused_before_it_is_decoded(
+        tmp_path: Path, encode: Callable[[str], bytes], message: str
+    ) -> None:
+        # The committed labels themselves, saved in the wrong encoding or holding one NUL.
+        data = encode(LABELS.read_bytes().decode("utf-8"))
+        labels_file = tmp_path / "labels.json"
+        labels_file.write_bytes(data)
+    
+>       with pytest.raises(score.LabelsError) as raised:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE LabelsError
+
+tests\unit\test_scorer_rules.py:382: Failed
+_ test_a_utf16_or_nul_holding_labels_file_is_refused_before_it_is_decoded[a NUL byte] _
+
+tmp_path = WindowsPath('C:/Users/abero/AppData/Local/Temp/pytest-of-abero/pytest-27081/test_a_utf16_or_nul_holding_la2')
+encode = <function <lambda> at 0x000002386FABEAC0>
+message = 'the file holds NUL bytes, as UTF-16 or UTF-32 text does; save the labels as UTF-8'
+
+    @pytest.mark.parametrize(
+        ("encode", "message"),
+        [
+            (
+                lambda text: codecs.BOM_UTF16_LE + text.encode("utf-16-le"),
+                "the file is UTF-16 (it starts with a UTF-16 byte-order mark); "
+                "save the labels as UTF-8",
+            ),
+            (
+                lambda text: codecs.BOM_UTF16_BE + text.encode("utf-16-be"),
+                "the file is UTF-16 (it starts with a UTF-16 byte-order mark); "
+                "save the labels as UTF-8",
+            ),
+            (
+                lambda text: text.encode("utf-8").replace(b" ", b"\x00", 1),
+                "the file holds NUL bytes, as UTF-16 or UTF-32 text does; save the labels as UTF-8",
+            ),
+        ],
+        ids=["UTF-16 LE byte-order mark", "UTF-16 BE byte-order mark", "a NUL byte"],
+    )
+    def test_a_utf16_or_nul_holding_labels_file_is_refused_before_it_is_decoded(
+        tmp_path: Path, encode: Callable[[str], bytes], message: str
+    ) -> None:
+        # The committed labels themselves, saved in the wrong encoding or holding one NUL.
+        data = encode(LABELS.read_bytes().decode("utf-8"))
+        labels_file = tmp_path / "labels.json"
+        labels_file.write_bytes(data)
+    
+>       with pytest.raises(score.LabelsError) as raised:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE LabelsError
+
+tests\unit\test_scorer_rules.py:382: Failed
+=========================== short test summary info ===========================
+FAILED tests/unit/test_strict_json.py::test_the_proposal_and_labels_readers_refuse_the_same_bytes_alike[UTF-16 BE byte-order mark]
+FAILED tests/unit/test_strict_json.py::test_the_proposal_and_labels_readers_refuse_the_same_bytes_alike[UTF-16 LE byte-order mark]
+FAILED tests/unit/test_strict_json.py::test_the_proposal_and_labels_readers_refuse_the_same_bytes_alike[UTF-16 without a byte-order mark]
+FAILED tests/unit/test_strict_json.py::test_the_proposal_and_labels_readers_refuse_the_same_bytes_alike[one NUL byte]
+FAILED tests/unit/test_scorer_rules.py::test_a_utf16_or_nul_holding_labels_file_is_refused_before_it_is_decoded[UTF-16 LE byte-order mark]
+FAILED tests/unit/test_scorer_rules.py::test_a_utf16_or_nul_holding_labels_file_is_refused_before_it_is_decoded[UTF-16 BE byte-order mark]
+FAILED tests/unit/test_scorer_rules.py::test_a_utf16_or_nul_holding_labels_file_is_refused_before_it_is_decoded[a NUL byte]
+7 failed, 151 passed in 0.45s

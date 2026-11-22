@@ -1,0 +1,67 @@
+## IS-7 reads only name, action and reason (the round-8 scope)
+exit 1: 7 failed, 29 passed in 7.26s
+  FAILED tests/integration/test_cli_eval.py::test_a_garbage_run_built_by_tampering_with_a_copy_fails_exactly_its_criterion[IS-7 EVIDENCE_URL_MAX]
+  FAILED tests/integration/test_cli_eval.py::test_a_garbage_run_built_by_tampering_with_a_copy_fails_exactly_its_criterion[IS-7 LOCATOR_MAX]
+  FAILED tests/integration/test_cli_eval.py::test_a_garbage_run_built_by_tampering_with_a_copy_fails_exactly_its_criterion[IS-7 NOTE_MAX]
+  FAILED tests/unit/test_scorer_rules.py::test_is7_fails_on_each_broken_invariant[fields9-its locator is 201 characters; LOCATOR_MAX is 200]
+  FAILED tests/unit/test_scorer_rules.py::test_is7_fails_on_each_broken_invariant[fields10-its locator must not be empty; use null when there is none]
+  FAILED tests/unit/test_scorer_rules.py::test_is7_fails_on_each_broken_invariant[fields11-its note is 301 characters; NOTE_MAX is 300]
+  FAILED tests/unit/test_scorer_rules.py::test_is7_fails_on_each_broken_invariant[fields12-; EVIDENCE_URL_MAX is 2048]
+## IS-7 without the start_s bound
+exit 1: 6 failed, 31 passed in 7.18s
+  FAILED tests/integration/test_cli_eval.py::test_a_garbage_run_built_by_tampering_with_a_copy_fails_exactly_its_criterion[IS-7 START_S_MAX]
+  FAILED tests/integration/test_cli_eval.py::test_a_garbage_run_built_by_tampering_with_a_copy_fails_exactly_its_criterion[IS-7 start_s at the duration]
+  FAILED tests/integration/test_cli_eval.py::test_a_garbage_run_built_by_tampering_with_a_copy_fails_exactly_its_criterion[IS-7 start_s below 0]
+  FAILED tests/unit/test_scorer_rules.py::test_is7_fails_on_each_broken_invariant[fields13-its start_s is -1; it must be 0 <= start_s < duration_s (200)]
+  FAILED tests/unit/test_scorer_rules.py::test_is7_fails_on_each_broken_invariant[fields14-its start_s is 200; it must be 0 <= start_s < duration_s (200)]
+  FAILED tests/unit/test_scorer_rules.py::test_is7_bounds_start_s_by_start_s_max_when_the_packet_has_no_duration
+## IS-7 without the bucket enum
+exit 1: 2 failed, 34 passed in 7.56s
+  FAILED tests/integration/test_cli_eval.py::test_a_garbage_run_built_by_tampering_with_a_copy_fails_exactly_its_criterion[IS-7 BUCKET_IDS]
+  FAILED tests/unit/test_scorer_rules.py::test_is7_fails_on_each_broken_invariant[fields15-its bucket is 5; it must be one of 1, 2, 3, 4]
+## IS-7 without the audience enum
+exit 1: 2 failed, 34 passed in 4.97s
+  FAILED tests/integration/test_cli_eval.py::test_a_garbage_run_built_by_tampering_with_a_copy_fails_exactly_its_criterion[IS-7 AUDIENCES_TIP]
+  FAILED tests/unit/test_scorer_rules.py::test_is7_fails_on_each_broken_invariant[fields16-its audience is 'teens'; it must be one of kids+, adults]
+## IS-7 without the ID_MAX check
+exit 1: 3 failed, 33 passed in 4.86s
+  FAILED tests/integration/test_cli_eval.py::test_a_garbage_run_built_by_tampering_with_a_copy_fails_exactly_its_criterion[IS-7 ID_MAX]
+  FAILED tests/unit/test_scorer_rules.py::test_is7_fails_on_each_broken_invariant[fields17-its possible_duplicate_of is 9223372036854775808, not a tip id]
+  FAILED tests/unit/test_scorer_rules.py::test_is7_fails_on_each_broken_invariant[fields18-its duplicate_of is 0, not a tip id]
+## the archive reader drops note (stored notes then differ)
+exit 1: 2 failed in 1.22s
+  FAILED tests/integration/test_cli_eval.py::test_a_known_good_in_sample_run_passes[run-A]
+  FAILED tests/integration/test_cli_eval.py::test_a_known_good_in_sample_run_passes[run-B]
+## IS-1 ignores a repeated ref
+exit 1: 1 failed, 16 passed in 4.27s
+  FAILED tests/integration/test_cli_eval.py::test_a_garbage_run_built_by_tampering_with_a_copy_fails_exactly_its_criterion[IS-1 ref stored twice]
+## write_report has no fallback without hard links
+exit 1: 1 failed in 1.05s
+  FAILED tests/integration/test_cli_eval.py::test_without_hard_links_the_score_file_is_written_and_still_never_over_another
+## the fallback claims the name with a plain (overwriting) open
+exit 1: 1 failed in 1.70s
+  FAILED tests/integration/test_cli_eval.py::test_without_hard_links_the_score_file_is_written_and_still_never_over_another
+## the crash line without score.printable
+exit 1: 1 failed in 1.46s
+  FAILED tests/integration/test_cli_eval.py::test_a_crash_inside_eval_score_exits_6_not_9
+## packet.py re-defines lacks_hard_links (a copy)
+exit 1: 1 failed, 20 passed in 0.86s
+  FAILED tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[packet.lacks_hard_links]
+## proposal.py re-defines is_whole (a copy)
+exit 1: 1 failed, 18 passed in 0.41s
+  FAILED tests/unit/test_strict_json.py::test_each_reader_holds_the_leafs_own_object_not_a_copy[proposal.is_whole]
+## score.py re-spells NOT_A_BUCKET
+exit 1: 1 failed, 20 passed in 1.09s
+  FAILED tests/unit/test_scorer_rules.py::test_each_consumer_holds_its_owners_object_not_a_copy[score.NOT_A_BUCKET]
+## the leak check's fixture titles hold no labelled title (fixed order)
+exit 1: 1 failed in 1.08s
+  FAILED tests/test_skill_packages.py::test_no_labelled_in_sample_title_appears_in_the_skill
+## the same, with the round-8 order (labels appended before the check): stays green
+exit 0: 1 passed in 0.60s
+
+restored byte for byte: True
+  ba7c880eea57f2c06ebc7897387f47bacd2bc1fa1b3421b84524044d62d3a852  src\checklist_care\cli.py
+  37fde1350971269720eaa4bcb5b39b19cd087adf0f005546ae61689a0d6fc5a3  src\checklist_care\proposal.py
+  a120668835543967543e7385b4d6e6ecd40081f5e19e2e0bbf4280d7965ebd71  src\checklist_care\scoring\score.py
+  c07bbdeab4ba6fa8733dfbf449aff344955833c16983598adcc34edfcd11a0f6  src\checklist_care\sources\packet.py
+  c1db50e2a8ced79748b141f6bf786f64c924089a2047f914c8026419ea05dc9a  tests\test_skill_packages.py

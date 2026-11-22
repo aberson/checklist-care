@@ -32,22 +32,21 @@ UTF-8) is reported on its field before any other check reads the value.
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import sqlite3
 import unicodedata
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from types import TracebackType
+from types import MappingProxyType, TracebackType
 from typing import Any, Final, TypeGuard
 from urllib.parse import urlsplit
 
 from checklist_care import context, paths, placement
 from checklist_care.db import connection
-from checklist_care.errors import ConfigError, Problem, ProposalInvalidError, one_line
+from checklist_care.errors import ConfigError, Problem, ProposalInvalidError
 from checklist_care.limits import (
     ACTION_MAX,
     AUDIENCES_TIP,
@@ -80,6 +79,15 @@ from checklist_care.server import base_url
 from checklist_care.store import lists as list_store
 from checklist_care.store import sources as source_store
 from checklist_care.store import tips as tip_store
+from checklist_care.strict_json import (
+    BAD_CONSTANT,
+    ENCODING_KINDS,
+    JsonFileError,
+    is_whole,
+    read_capped,
+    read_error_reason,
+)
+from checklist_care.strict_json import decode as decode_json
 
 PROPOSAL_SCHEMA: Final = "checklist-care.proposal/1"
 
@@ -102,6 +110,9 @@ ENVELOPE_FIELDS: Final = (
 )
 """Every envelope field; all are required."""
 
+HASH_FIELDS: Final = ("packet_sha256", "skill_sha256")
+"""The envelope fields that hold a sha256 fingerprint (:func:`is_sha256`)."""
+
 TIP_REQUIRED: Final = ("name", "action", "reason", "bucket", "audience", "list_ids")
 TIP_OPTIONAL: Final = (
     "start_s",
@@ -122,7 +133,6 @@ TIP_FIELD: Final = "tip"
 SAVE_AS_UTF8: Final = "save as UTF-8 (without a byte-order mark is best) and submit it again"
 
 _SHA256_PATTERN: Final = re.compile(r"[0-9a-fA-F]{64}")
-_UTF16_BOMS: Final = (b"\xff\xfe", b"\xfe\xff")
 _LINE_BREAKING: Final = frozenset({"Cc", "Zl", "Zp"})
 """Unicode categories that break or control a one-line text: controls and separators."""
 RUBRIC_WHITESPACE: Final = frozenset({"\n", "\t"})
@@ -138,6 +148,20 @@ UNPAIRED_SURROGATE: Final = (
 
 
 # --- tip text rules, shared with the API ----------------------------------------------
+
+TIP_TEXT_LIMITS: Final[Mapping[str, tuple[str, int]]] = MappingProxyType(
+    {
+        "name": ("NAME_MAX", NAME_MAX),
+        "action": ("ACTION_MAX", ACTION_MAX),
+        "reason": ("REASON_MAX", REASON_MAX),
+        "locator": ("LOCATOR_MAX", LOCATOR_MAX),
+        "note": ("NOTE_MAX", NOTE_MAX),
+        "evidence_url": ("EVIDENCE_URL_MAX", EVIDENCE_URL_MAX),
+    }
+)
+"""Each tip text field and its limit, as :func:`text_problem` takes it: ``(constant
+name, value)``. ``propose`` checks a proposed tip against these, and the eval scorer's
+IS-7 a stored one."""
 
 
 def text_problem(value: str, limit: tuple[str, int], *, optional: bool = False) -> str | None:
@@ -213,69 +237,30 @@ def _reject(field_name: str, problem: str) -> ProposalInvalidError:
 # --- decoding ------------------------------------------------------------------------
 
 
-class _DuplicateKeyError(ValueError):
-    """A JSON object in the proposal repeats a key; the argument is the key."""
+def _file_problem(error: JsonFileError) -> str:
+    """The ``file`` problem for bytes :func:`strict_json.decode` refused: its message
+    plus this reader's advice."""
 
-
-class _BadConstantError(ValueError):
-    """The proposal holds ``NaN``, ``Infinity`` or ``-Infinity``; the argument is which."""
-
-
-def _unique_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise _DuplicateKeyError(key)
-        result[key] = value
-    return result
-
-
-def _no_constant(name: str) -> Any:
-    raise _BadConstantError(name)
+    if error.kind in ENCODING_KINDS:
+        return f"{error.message}; {SAVE_AS_UTF8}"
+    if error.kind == BAD_CONSTANT:
+        return f"{error.message}; use a finite number or null"
+    return error.message
 
 
 def decode(data: bytes) -> dict[str, Any]:
     """Parse proposal file bytes (``utf-8-sig``) into its JSON object.
 
-    A UTF-16 or UTF-32 file gets an explicit "save as UTF-8" problem instead of a
-    JSON error; so does a file that is not UTF-8. Duplicate keys, ``NaN`` and
-    ``Infinity`` are rejected, as is a top level that is not an object.
+    The bytes are read by :func:`strict_json.decode`, the decoder the eval labels
+    reader shares. A UTF-16 or UTF-32 file gets an explicit "save as UTF-8" problem
+    instead of a JSON error; so does a file that is not UTF-8. Duplicate keys,
+    ``NaN`` and ``Infinity`` are rejected, as is a top level that is not an object.
     """
 
-    if data.startswith(_UTF16_BOMS):
-        raise _reject(
-            FILE_FIELD,
-            f"the file is UTF-16 (it starts with a UTF-16 byte-order mark); {SAVE_AS_UTF8}",
-        )
-    if b"\x00" in data:
-        raise _reject(
-            FILE_FIELD,
-            f"the file holds NUL bytes, as UTF-16 or UTF-32 text does; {SAVE_AS_UTF8}",
-        )
     try:
-        text = data.decode("utf-8-sig")
-    except UnicodeDecodeError as error:
-        raise _reject(
-            FILE_FIELD, f"the file is not UTF-8 (byte {error.start} is invalid); {SAVE_AS_UTF8}"
-        ) from error
-    try:
-        document = json.loads(text, object_pairs_hook=_unique_keys, parse_constant=_no_constant)
-    except _DuplicateKeyError as error:
-        raise _reject(
-            FILE_FIELD, f"the key {error.args[0]!r} appears twice in one object"
-        ) from error
-    except _BadConstantError as error:
-        raise _reject(
-            FILE_FIELD, f"{error.args[0]} is not a JSON number; use a finite number or null"
-        ) from error
-    except json.JSONDecodeError as error:
-        raise _reject(
-            FILE_FIELD,
-            f"the file is not valid JSON: {error.msg} at line {error.lineno} column {error.colno}",
-        ) from error
-    except (ValueError, RecursionError) as error:  # an over-long integer, deep nesting
-        detail = one_line(str(error))[:200] or type(error).__name__
-        raise _reject(FILE_FIELD, f"the file is not valid JSON: {detail}") from error
+        document = decode_json(data)
+    except JsonFileError as error:
+        raise _reject(FILE_FIELD, _file_problem(error)) from error
     if not isinstance(document, dict):
         raise _reject(FILE_FIELD, "the proposal must be one JSON object")
     return document
@@ -286,12 +271,11 @@ def read_file(path: Path) -> bytes:
     ``PROPOSAL_FILE_MAX_BYTES`` (read no further than that), is a ``file`` problem."""
 
     try:
-        with path.open("rb") as handle:
-            data = handle.read(PROPOSAL_FILE_MAX_BYTES + 1)
+        data = read_capped(path, PROPOSAL_FILE_MAX_BYTES)
     except OSError as error:
-        reason = error.strerror or type(error).__name__
+        reason = read_error_reason(error)
         raise _reject(FILE_FIELD, f"cannot read the proposal file {path}: {reason}") from error
-    if len(data) > PROPOSAL_FILE_MAX_BYTES:
+    if data is None:
         raise _reject(
             FILE_FIELD,
             f"the file is larger than PROPOSAL_FILE_MAX_BYTES ({PROPOSAL_FILE_MAX_BYTES} bytes), "
@@ -364,19 +348,38 @@ class _Checker:
         value = obj.get(name)
         if value is None:
             return None
-        if not _is_id(value):
+        if not is_id(value):
             self.add(index, name, "must be a tip id (a positive whole number) or null")
             return None
         self.references.append((index, name, int(value)))
         return int(value)
 
 
-def _is_id(value: Any) -> bool:
+def is_id(value: Any) -> bool:
+    """True for a row id a proposal may name (``list_ids``, ``duplicate_of``,
+    ``possible_duplicate_of``): a whole number from 1 to ``ID_MAX``."""
+
     return isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= ID_MAX
 
 
-def _is_whole(value: Any) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool)
+def is_bucket(value: Any) -> TypeGuard[int]:
+    """True for a bucket id: a whole number in ``BUCKET_IDS``."""
+
+    return is_whole(value) and value in BUCKET_IDS
+
+
+NOT_A_BUCKET: Final = f"must be one of {', '.join(map(str, BUCKET_IDS))}"
+"""The problem with a value :func:`is_bucket` refuses."""
+
+
+def is_tip_audience(value: Any) -> TypeGuard[str]:
+    """True for a tip audience: one of ``AUDIENCES_TIP``."""
+
+    return value in AUDIENCES_TIP
+
+
+NOT_A_TIP_AUDIENCE: Final = f"must be one of {', '.join(AUDIENCES_TIP)}"
+"""The problem with a value :func:`is_tip_audience` refuses."""
 
 
 def _is_http_url(value: str) -> bool:
@@ -524,11 +527,11 @@ def _check_envelope(
             f"{source.kind}: use {SOURCE_MODE_EXTRACT}",
         )
         investigate = False
-    for name in ("packet_sha256", "skill_sha256"):
-        if name in document and not _is_sha256(document[name]):
+    for name in HASH_FIELDS:
+        if name in document and not is_sha256(document[name]):
             checker.add(None, name, "must be 64 hex digits, copied from `checklist-care context`")
     packet_hash = document.get("packet_sha256")
-    if loaded is not None and _is_sha256(packet_hash) and packet_hash.lower() != loaded.sha256:
+    if loaded is not None and is_sha256(packet_hash) and packet_hash.lower() != loaded.sha256:
         checker.add(
             None,
             "packet_sha256",
@@ -537,7 +540,7 @@ def _check_envelope(
             f"'{loaded.source.ref}'` again, read the packet again and redo the proposal",
         )
     skill_hash = document.get("skill_sha256")
-    if _is_sha256(skill_hash) and skill_hash.lower() != context.skill_sha256():
+    if is_sha256(skill_hash) and skill_hash.lower() != context.skill_sha256():
         checker.add(
             None,
             "skill_sha256",
@@ -560,7 +563,10 @@ def _check_envelope(
     )
 
 
-def _is_sha256(value: Any) -> TypeGuard[str]:
+def is_sha256(value: Any) -> TypeGuard[str]:
+    """True for a sha256 fingerprint as a proposal carries it: 64 hex digits, either case.
+    ``propose`` and the eval scorer's archive reader both test with it."""
+
     return isinstance(value, str) and _SHA256_PATTERN.fullmatch(value) is not None
 
 
@@ -616,10 +622,21 @@ def _check_start(
                 "chapter (or the advice) starts at",
             )
         return None
-    if not _is_whole(value):
+    if not is_whole(value):
         checker.add(index, "start_s", "must be a whole number of seconds")
         return None
-    duration = packet.duration_s
+    problem = start_problem(value, packet.duration_s)
+    if problem is not None:
+        checker.add(index, "start_s", problem)
+        return None
+    return int(value)
+
+
+def start_problem(value: int, duration: int | None) -> str | None:
+    """Why the whole second ``value`` is not a valid ``start_s`` of a video that lasts
+    ``duration`` seconds (None when unknown), or None when it is: ``0 <= start_s <=
+    START_S_MAX``, and ``start_s < duration`` when the duration is known."""
+
     # START_S_MAX applies with or without a duration: an unbounded int would overflow
     # SQLite INTEGER on insert. The tighter of the two bounds is the one reported.
     if value < 0 or value > START_S_MAX or (duration is not None and value >= duration):
@@ -627,14 +644,13 @@ def _check_start(
             bound = f"0 <= start_s < duration_s ({duration})"
         else:
             bound = f"0 <= start_s <= START_S_MAX ({START_S_MAX})"
-        checker.add(index, "start_s", f"is {value}; it must be {bound}")
-        return None
-    return int(value)
+        return f"is {value}; it must be {bound}"
+    return None
 
 
 def _check_list_ids(checker: _Checker, index: int, obj: dict[str, Any]) -> list[int] | None:
     value = obj.get("list_ids")
-    if not isinstance(value, list) or not all(_is_id(item) for item in value):
+    if not isinstance(value, list) or not all(is_id(item) for item in value):
         checker.add(index, "list_ids", "must be a list of list ids (whole numbers), such as [5, 6]")
         return None
     return [int(item) for item in value]
@@ -656,7 +672,7 @@ def _check_locator(
     """A tip's ``locator``. Optional text, except in investigate mode (plan §4.5), where it
     is required and must equal one of the packet's section headings exactly."""
 
-    limit = ("LOCATOR_MAX", LOCATOR_MAX)
+    limit = TIP_TEXT_LIMITS["locator"]
     if not envelope.cited:
         return checker.text(obj, index, "locator", limit, optional=True)
     if obj.get("locator") is None:
@@ -686,7 +702,7 @@ def _check_evidence_url(
     """A tip's ``evidence_url``: an http(s) URL or null. In investigate mode (plan §4.5) it
     is required, and in a degraded investigation it is the article URL, the packet's ``url``."""
 
-    limit = ("EVIDENCE_URL_MAX", EVIDENCE_URL_MAX)
+    limit = TIP_TEXT_LIMITS["evidence_url"]
     if envelope.cited and obj.get("evidence_url") is None:
         checker.add(index, "evidence_url", INVESTIGATE_EVIDENCE_REQUIRED)
         return None
@@ -731,25 +747,25 @@ def _check_tip(
         return None
     before = len(checker.problems)
     _fields(checker, obj, index, TIP_REQUIRED, TIP_FIELDS, "tip")
-    name = checker.text(obj, index, "name", ("NAME_MAX", NAME_MAX)) if "name" in obj else None
+    name = checker.text(obj, index, "name", TIP_TEXT_LIMITS["name"]) if "name" in obj else None
     action = (
-        checker.text(obj, index, "action", ("ACTION_MAX", ACTION_MAX)) if "action" in obj else None
+        checker.text(obj, index, "action", TIP_TEXT_LIMITS["action"]) if "action" in obj else None
     )
     if name is not None and action is not None:
         too_long = line_problem(name, action)
         if too_long is not None:
             checker.add(index, "action", too_long)
     reason = (
-        checker.text(obj, index, "reason", ("REASON_MAX", REASON_MAX)) if "reason" in obj else None
+        checker.text(obj, index, "reason", TIP_TEXT_LIMITS["reason"]) if "reason" in obj else None
     )
 
     bucket = obj.get("bucket")
-    if "bucket" in obj and (not _is_whole(bucket) or bucket not in BUCKET_IDS):
-        checker.add(index, "bucket", f"must be one of {', '.join(map(str, BUCKET_IDS))}")
+    if "bucket" in obj and not is_bucket(bucket):
+        checker.add(index, "bucket", NOT_A_BUCKET)
         bucket = None
     audience = obj.get("audience")
-    if "audience" in obj and audience not in AUDIENCES_TIP:
-        checker.add(index, "audience", f"must be one of {', '.join(AUDIENCES_TIP)}")
+    if "audience" in obj and not is_tip_audience(audience):
+        checker.add(index, "audience", NOT_A_TIP_AUDIENCE)
         audience = None
 
     list_ids = _check_list_ids(checker, index, obj) if "list_ids" in obj else None
@@ -773,7 +789,7 @@ def _check_tip(
     possible = checker.optional_id(obj, index, "possible_duplicate_of")
     start_s = _check_start(checker, index, obj, envelope)
     locator = _check_locator(checker, index, obj, envelope)
-    note = checker.text(obj, index, "note", ("NOTE_MAX", NOTE_MAX), optional=True)
+    note = checker.text(obj, index, "note", TIP_TEXT_LIMITS["note"], optional=True)
     evidence_url = _check_evidence_url(checker, index, obj, envelope)
 
     if len(checker.problems) != before:

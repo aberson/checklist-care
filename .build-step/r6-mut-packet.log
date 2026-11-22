@@ -1,0 +1,91 @@
+..FF.                                                                    [100%]
+================================== FAILURES ===================================
+_ test_an_input_file_over_its_cap_or_not_a_regular_file_aborts_unread[cached packet-one byte over its cap] _
+
+capsys = <_pytest.capture.CaptureFixture object at 0x000002CA5B423ED0>
+data_dir = WindowsPath('C:/Users/abero/AppData/Local/Temp/pytest-of-abero/pytest-27141/test_an_input_file_over_its_ca2/data')
+videos = FakeVideos(packets={'RPK-xw3SrVw': {'schema': 'checklist-care.packet/1', 'source_ref': 'youtube:RPK-xw3SrVw', 'kind': ...3}, {'title': 'Your Brain Is A Raisin', 'start_s': 503, 'end_s': 563}], 'text': None, 'sections': [], 'warnings': []}})
+input_file = 'cached packet', unusable = 'one byte over its cap'
+
+    @pytest.mark.parametrize("unusable", ["one byte over its cap", "a folder"])
+    @pytest.mark.parametrize("input_file", sorted(INPUT_FILES))
+    def test_an_input_file_over_its_cap_or_not_a_regular_file_aborts_unread(
+        capsys: pytest.CaptureFixture[str],
+        data_dir: Path,
+        videos: FakeVideos,
+        input_file: str,
+        unusable: str,
+    ) -> None:
+        locate, rule, cap, cap_name = INPUT_FILES[input_file]
+        build_run(capsys, data_dir)
+        path = locate(data_dir)
+        if unusable == "a folder":  # a folder, a device or a pipe is never opened
+            path.unlink()
+            path.mkdir()
+            named = "it is not a regular file (a folder, a device or a pipe)"
+        else:
+            # Trailing spaces keep the same JSON value, so only the cap can refuse the file:
+            # read whole, the archive would still pass and the packet would abort as stale.
+            data = path.read_bytes()
+            path.write_bytes(data + b" " * (cap + 1 - len(data)))
+            named = f"it is larger than {cap_name} ({cap} bytes)"
+    
+        scored = score_run(capsys, data_dir)
+    
+>       assert_aborts(scored, rule)
+
+tests\integration\test_cli_eval.py:1052: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+scored = Scored(code=6, payload={'schema': 'checklist-care.score/1', 'scored_at': '2026-11-08T12:00:00Z', 'verdict': 'ABORT', '...744e4cd1e7fc9daae628d292f, but the cached packet is 703bf9767baa98eeb74a7d1224be383611de40f1540f6f6005571064b81d65ae'])
+rule = 'packet-unusable'
+
+    def assert_aborts(scored: Scored, rule: str) -> None:
+        assert scored.code == 6, (scored.out, scored.err)
+        assert scored.err[-1].startswith("CC_EVAL_ABORT: ")
+>       assert rule in scored.err[-1]
+E       AssertionError: assert 'packet-unusable' in 'CC_EVAL_ABORT: 1 abort condition, no verdict: packet-stale: the archived proposal of youtube:LpeDuC2sQ-w names packet...a7744e4cd1e7fc9daae628d292f, but the cached packet is 703bf9767baa98eeb74a7d1224be383611de40f1540f6f6005571064b81d65ae'
+
+tests\integration\test_cli_eval.py:513: AssertionError
+_ test_an_input_file_over_its_cap_or_not_a_regular_file_aborts_unread[cached packet-a folder] _
+
+capsys = <_pytest.capture.CaptureFixture object at 0x000002CA5B3FED70>
+data_dir = WindowsPath('C:/Users/abero/AppData/Local/Temp/pytest-of-abero/pytest-27141/test_an_input_file_over_its_ca3/data')
+videos = FakeVideos(packets={'RPK-xw3SrVw': {'schema': 'checklist-care.packet/1', 'source_ref': 'youtube:RPK-xw3SrVw', 'kind': ...3}, {'title': 'Your Brain Is A Raisin', 'start_s': 503, 'end_s': 563}], 'text': None, 'sections': [], 'warnings': []}})
+input_file = 'cached packet', unusable = 'a folder'
+
+    @pytest.mark.parametrize("unusable", ["one byte over its cap", "a folder"])
+    @pytest.mark.parametrize("input_file", sorted(INPUT_FILES))
+    def test_an_input_file_over_its_cap_or_not_a_regular_file_aborts_unread(
+        capsys: pytest.CaptureFixture[str],
+        data_dir: Path,
+        videos: FakeVideos,
+        input_file: str,
+        unusable: str,
+    ) -> None:
+        locate, rule, cap, cap_name = INPUT_FILES[input_file]
+        build_run(capsys, data_dir)
+        path = locate(data_dir)
+        if unusable == "a folder":  # a folder, a device or a pipe is never opened
+            path.unlink()
+            path.mkdir()
+            named = "it is not a regular file (a folder, a device or a pipe)"
+        else:
+            # Trailing spaces keep the same JSON value, so only the cap can refuse the file:
+            # read whole, the archive would still pass and the packet would abort as stale.
+            data = path.read_bytes()
+            path.write_bytes(data + b" " * (cap + 1 - len(data)))
+            named = f"it is larger than {cap_name} ({cap} bytes)"
+    
+        scored = score_run(capsys, data_dir)
+    
+        assert_aborts(scored, rule)
+        assert scored.abort_rules == [rule]
+>       assert named in scored.err[-1]
+E       assert 'it is not a regular file (a folder, a device or a pipe)' in "CC_EVAL_ABORT: 1 abort condition, no verdict: packet-unusable: cannot read the packet of youtube:LpeDuC2sQ-w at C:\\U...t-of-abero\\\\pytest-27141\\\\test_an_input_file_over_its_ca3\\\\data\\\\packets\\\\youtube-LpeDuC2sQ-w-64034214.json'"
+
+tests\integration\test_cli_eval.py:1054: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/integration/test_cli_eval.py::test_an_input_file_over_its_cap_or_not_a_regular_file_aborts_unread[cached packet-one byte over its cap]
+FAILED tests/integration/test_cli_eval.py::test_an_input_file_over_its_cap_or_not_a_regular_file_aborts_unread[cached packet-a folder]
+2 failed, 3 passed in 1.66s

@@ -1,0 +1,4 @@
+mypy=0
+ruff=0
+format=0
+pytest=0
