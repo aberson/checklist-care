@@ -5,10 +5,14 @@ from ``proposal.text_problem``, so a request is held to exactly the rules a
 proposal is. A request that fails them is a 400 ``CC_E_VALIDATION`` naming the
 fields (``server/app.py`` turns FastAPI's validation error into that shape).
 Types are strict: ``true`` is not a bucket and ``"3"`` is not an id.
+
+A bucket rubric is the one text that may run to several lines (:func:`rubric_problem`);
+a bucket title follows the one-line tip-text rule.
 """
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Callable, Sequence
 from typing import Annotated, Final
 
@@ -21,10 +25,12 @@ from checklist_care.limits import (
     ACTION_MAX,
     AUDIENCES_TIP,
     BUCKET_IDS,
+    BUCKET_TITLE_MAX,
     ID_MAX,
     NAME_MAX,
     NOTE_MAX,
     REASON_MAX,
+    RUBRIC_MAX,
     TIP_STATUSES,
 )
 
@@ -37,6 +43,49 @@ def _text_rule(limit: tuple[str, int]) -> Callable[[str], str]:
         return value
 
     return check
+
+
+RUBRIC_WHITESPACE: Final = frozenset({"\n", "\t"})
+"""The control characters a rubric may hold: line feeds and tabs."""
+
+_RUBRIC_REFUSED: Final = frozenset({"Cc", "Zl", "Zp"})
+"""Unicode categories a rubric may not hold, beyond :data:`RUBRIC_WHITESPACE`: control
+codes and the line and paragraph separators."""
+
+
+def rubric_problem(value: str) -> str | None:
+    """Why ``value`` is not a valid bucket rubric, or None when it is.
+
+    A rubric is non-blank and at most ``RUBRIC_MAX`` characters. Unlike a tip text it
+    may run to several lines: it may hold line feeds and tabs, but no other control
+    code (a carriage return included; the Buckets page sends LF line breaks), no
+    Unicode line or paragraph separator and no unpaired surrogate. The stored text
+    is exactly the text given, which is what ``checklist-care context`` prints.
+    """
+
+    if not value.strip():
+        return "must not be empty"
+    if len(value) > RUBRIC_MAX:
+        return f"is {len(value)} characters; RUBRIC_MAX is {RUBRIC_MAX}; shorten it"
+    for char in value:
+        if char in RUBRIC_WHITESPACE:
+            continue
+        category = unicodedata.category(char)
+        if category == "Cs":
+            return proposal.UNPAIRED_SURROGATE
+        if category in _RUBRIC_REFUSED:
+            return (
+                "may hold line breaks (LF) and tabs, but no carriage return, "
+                f"other control code or Unicode line separator (U+{ord(char):04X})"
+            )
+    return None
+
+
+def _rubric_rule(value: str) -> str:
+    problem = rubric_problem(value)
+    if problem is not None:
+        raise ValueError(problem)
+    return value
 
 
 def _one_of[Member: (str, int)](members: Sequence[Member]) -> Callable[[Member], Member]:
@@ -61,6 +110,10 @@ def no_such_list(list_id: int) -> ApiNotFoundError:
     """The 404 for a :data:`ListId` that names no list."""
 
     return ApiNotFoundError(f"there is no list #{list_id}")
+
+
+BucketId = Annotated[int, Path(ge=1, le=ID_MAX)]
+"""A bucket id in a path (``/buckets/{id}``): 1 to ``ID_MAX``; only 1-4 exist."""
 
 
 TipName = Annotated[StrictStr, AfterValidator(_text_rule(("NAME_MAX", NAME_MAX)))]
@@ -132,3 +185,36 @@ class TipIds(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tip_ids: list[RowId]
+
+
+BucketTitle = Annotated[
+    StrictStr, AfterValidator(_text_rule(("BUCKET_TITLE_MAX", BUCKET_TITLE_MAX)))
+]
+BucketRubric = Annotated[StrictStr, AfterValidator(_rubric_rule)]
+
+BUCKET_FIELDS: Final = ("title", "rubric")
+"""The fields ``PUT /buckets/{id}`` takes."""
+
+
+class BucketPut(BaseModel):
+    """``PUT /buckets/{id}``: ``{title?, rubric?}``, at least one, each non-empty.
+
+    A field left out keeps its value; neither may be null (the route checks that and
+    the empty body, so the 400 names the fields).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: BucketTitle | None = None
+    rubric: BucketRubric | None = None
+
+    def given(self) -> frozenset[str]:
+        """The fields the request named, null or not."""
+
+        return frozenset(self.model_fields_set)
+
+    def null_problems(self) -> list[str]:
+        """The fields the request set to null, in :data:`BUCKET_FIELDS` order."""
+
+        given = self.given()
+        return [name for name in BUCKET_FIELDS if name in given and getattr(self, name) is None]

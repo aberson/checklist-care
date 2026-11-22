@@ -124,6 +124,23 @@ export interface NewTip {
   list_ids: number[];
 }
 
+/**
+ * A bucket as `GET /api/buckets` and `PUT /api/buckets/{id}` return it. The rubric is what the
+ * skill reads (through `checklist-care context`) to sort the tips of its next ingest.
+ */
+export interface Bucket {
+  id: number;
+  title: string;
+  rubric: string;
+  updated_at: string;
+}
+
+/** The body of `PUT /api/buckets/{id}`: the changed fields only, at least one, each non-empty. */
+export interface BucketPut {
+  title?: string;
+  rubric?: string;
+}
+
 /** What `PATCH /api/tips/{id}` returns. */
 export interface PatchResult {
   tip: Tip;

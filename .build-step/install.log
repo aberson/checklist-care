@@ -1,0 +1,57 @@
+warning: `VIRTUAL_ENV=c:\Users\abero\dev\.venv-1` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+Using CPython 3.13.12
+Creating virtual environment at: .venv
+Resolved 38 packages in 4ms
+   Building checklist-care @ file:///C:/Users/abero/dev/worktree_build-step-20261111T091510Z-a6622640
+      Built checklist-care @ file:///C:/Users/abero/dev/worktree_build-step-20261111T091510Z-a6622640
+Prepared 1 package in 3.36s
+Installed 37 packages in 3.84s
+ + annotated-doc==0.0.5
+ + annotated-types==0.8.0
+ + anyio==4.16.0
+ + ast-serialize==0.13.1
+ + certifi==2026.10.23
+ + charset-normalizer==3.5.2
+ + checklist-care==0.1.0 (from file:///C:/Users/abero/dev/worktree_build-step-20261111T091510Z-a6622640)
+ + click==8.5.1
+ + colorama==0.4.6
+ + defusedxml==0.7.1
+ + fastapi==0.162.2
+ + h11==0.16.0
+ + httpcore2==2.16.0
+ + httpx2==2.16.0
+ + idna==3.20
+ + iniconfig==2.3.1
+ + librt==0.16.0
+ + mypy==2.4.1
+ + mypy-extensions==1.2.0
+ + opentelemetry-api==1.45.2
+ + packaging==26.3
+ + pathspec==1.1.1
+ + pluggy==1.7.0
+ + pydantic==2.14.3
+ + pydantic-core==2.50.4
+ + pygments==2.21.0
+ + pytest==9.2.0
+ + requests==2.34.2
+ + ruff==0.17.4
+ + starlette==1.10.0
+ + truststore==0.10.5
+ + typing-extensions==4.16.0
+ + typing-inspection==0.4.5
+ + urllib3==2.8.0
+ + uvicorn==0.54.0
+ + youtube-transcript-api==1.2.5
+ + yt-dlp==2026.10.26
+
+added 100 packages, and audited 101 packages in 7s
+
+21 packages are looking for funding
+  run `npm fund` for details
+
+1 high severity vulnerability
+
+To address all issues, run:
+  npm audit fix --force
+
+Run `npm audit` for details.

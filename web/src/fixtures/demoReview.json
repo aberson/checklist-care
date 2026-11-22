@@ -13,6 +13,8 @@
       "LOCATOR_MAX": 200,
       "NOTE_MAX": 300,
       "EVIDENCE_URL_MAX": 2048,
+      "BUCKET_TITLE_MAX": 40,
+      "RUBRIC_MAX": 2000,
       "PROPOSAL_FILE_MAX_BYTES": 8388608,
       "SQLITE_INTEGER_MAX": 9223372036854775807,
       "ID_MAX": 9223372036854775807,
@@ -99,6 +101,32 @@
     ],
     "print_capacity": 48
   },
+  "buckets": [
+    {
+      "id": 1,
+      "title": "Daily checklist",
+      "rubric": "Worth doing every day, or every time a cue happens. Takes about two minutes or less, needs no special equipment, and is manageable if a printed reminder hangs where you are when it is due. Has one clear physical action.",
+      "updated_at": "2026-11-08T12:00:00Z"
+    },
+    {
+      "id": 2,
+      "title": "Occasional activity",
+      "rubric": "Worth doing now and then (weekly, monthly, when the mood strikes) but takes real effort or time: a practice, project, outing or periodic review.",
+      "updated_at": "2026-11-08T12:00:00Z"
+    },
+    {
+      "id": 3,
+      "title": "Optional / when time allows",
+      "rubric": "Reasonable but not a priority: one-time setups, general principles without a single action, situational hacks, nice-to-haves. Browsable; never printed.",
+      "updated_at": "2026-11-08T12:00:00Z"
+    },
+    {
+      "id": 4,
+      "title": "Left out",
+      "rubric": "Not worth doing, questionable or unsafe, or a duplicate of a tip already stored. A duplicate is the same action at the same cue or moment; a different reason does not make it new. Duplicates record which tip they repeat. Never printed.",
+      "updated_at": "2026-11-08T12:00:00Z"
+    }
+  ],
   "sources": [
     {
       "id": 1,

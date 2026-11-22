@@ -1,14 +1,15 @@
 // Test helpers: the demo server's payloads and a fetch stub that answers by method and path.
 // fixtures/demoReview.json is what `checklist-care serve --demo` returns for /api/meta (minus
-// the version), /api/sources, /api/lists, /api/tips?status=pending, every
+// the version), /api/buckets, /api/sources, /api/lists, /api/tips?status=pending, every
 // /api/lists/{id}/items (keyed by list id) and /api/tips?unplaced=true;
 // tests/integration/test_api_review.py fails when the two differ.
 import { vi } from "vitest";
 import demo from "../fixtures/demoReview.json";
 import type { Meta } from "../meta";
-import type { ListInfo, ListItem, SourceInfo, Tip } from "../model";
+import type { Bucket, ListInfo, ListItem, SourceInfo, Tip } from "../model";
 
 export const META: Meta = { version: "0.0.0-test", ...(demo.meta as Omit<Meta, "version">) };
+export const DEMO_BUCKETS = demo.buckets as Bucket[];
 export const DEMO_SOURCES = demo.sources as SourceInfo[];
 export const DEMO_LISTS = demo.lists as ListInfo[];
 export const DEMO_TIPS = demo.tips as Tip[];
@@ -70,10 +71,11 @@ export function get(url: string, answer: StubAnswer): StubRoute {
   return (request) => (request.method === "GET" && request.url === url ? answer : undefined);
 }
 
-/** The demo inbox: /api/meta, /api/sources, /api/lists and the pending tips. */
+/** The demo inbox: /api/meta, /api/buckets, /api/sources, /api/lists and the pending tips. */
 export function demoRoutes(tips: readonly Tip[] = DEMO_TIPS): StubRoute[] {
   return [
     get("/api/meta", ok(META)),
+    get("/api/buckets", ok(DEMO_BUCKETS)),
     get("/api/sources", ok(DEMO_SOURCES)),
     get("/api/lists", ok(DEMO_LISTS)),
     get("/api/tips?status=pending", ok(tips)),
